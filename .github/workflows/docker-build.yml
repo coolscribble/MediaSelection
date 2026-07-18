@@ -1,14 +1,12 @@
-name: Build & Publish transmission-cleaner image
+name: Build & Publish MediaPicker image
 
 on:
-  push:
-    branches: [ "main" ]
-  schedule:
-    - cron: "0 */6 * * *"   # every 6 hours
+  release:
+    types: [published]
   workflow_dispatch:
 
 env:
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/MediaPicker
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/mediapicker
 
 jobs:
   build:
@@ -38,8 +36,9 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest
-            type=sha
 
       - name: 🔨 Build and push image
         uses: docker/build-push-action@v5
