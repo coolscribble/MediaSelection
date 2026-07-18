@@ -16,6 +16,7 @@ const DEFAULT_SETTINGS: Settings = {
   queue_modes: { movies: false, series: false, anime: false, manga: false, games: false, comics: false, albums: false },
   igdb_client_id: '', igdb_client_set: false,
   comicvine_api_set: false,
+  save_covers_locally: false,
 }
 
 export default function SettingsModal({ onClose }: Props) {
@@ -25,6 +26,7 @@ export default function SettingsModal({ onClose }: Props) {
   const [igdbClientId, setIgdbClientId] = useState('')
   const [igdbClientSecret, setIgdbClientSecret] = useState('')
   const [comicvineApiKey, setComicvineApiKey] = useState('')
+  const [saveCoversLocally, setSaveCoversLocally] = useState(false)
   const [aniUser, setAniUser] = useState('')
   const [malUser, setMalUser] = useState('')
   const [aniStates, setAniStates] = useState<string[]>(['PLANNING'])
@@ -49,6 +51,7 @@ export default function SettingsModal({ onClose }: Props) {
       setMalAnimeStates(data.mal_anime_states ?? ['plantowatch'])
       setMalMangaStates(data.mal_manga_states ?? ['plantoread'])
       setQueueModes(data.queue_modes ?? {})
+      setSaveCoversLocally(data.save_covers_locally ?? false)
     })
   }, [])
 
@@ -70,6 +73,7 @@ export default function SettingsModal({ onClose }: Props) {
         igdb_client_id: igdbClientId,
         ...(igdbClientSecret && { igdb_client_secret: igdbClientSecret }),
         ...(comicvineApiKey && { comicvine_api_key: comicvineApiKey }),
+        save_covers_locally: saveCoversLocally,
       })
       setMsg('Saved')
       setS(prev => ({ ...prev, queue_modes: queueModes as Settings['queue_modes'] }))
@@ -183,24 +187,10 @@ export default function SettingsModal({ onClose }: Props) {
               </div>
 
               <div className="sync-section">
-                <h3>💬 ComicVine (Comics covers)</h3>
-                <div className="form-group">
-                  <label>API Key</label>
-                  <input
-                    type="password"
-                    value={comicvineApiKey}
-                    onChange={e => setComicvineApiKey(e.target.value)}
-                    placeholder={s.comicvine_api_set ? '••••••••• (saved)' : 'paste API key here'}
-                  />
-                </div>
-                <div className="sync-row">
-                  <span className={`sync-status${s.comicvine_api_set ? ' ok' : ''}`}>
-                    {s.comicvine_api_set ? '✓ Key saved' : '✗ Not configured'}
-                  </span>
-                </div>
-                <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>
-                  Get a free key at <strong>comicvine.gamespot.com/api/</strong>.
-                  Hit <strong>Save</strong> then <strong>💬 Covers</strong> to fetch volume artwork.
+                <h3>💬 Comics cover art</h3>
+                <p style={{ fontSize: 12, color: 'var(--text2)' }}>
+                  Uses the Google Books API — no API key needed.
+                  Import your comics via CSV, then click <strong>💬 Covers</strong> in the header to fetch artwork automatically.
                 </p>
               </div>
 
@@ -235,6 +225,23 @@ export default function SettingsModal({ onClose }: Props) {
                 <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>
                   Register a free app at <strong>dev.twitch.tv/console</strong> to get credentials.
                   Hit <strong>Save</strong> then <strong>⟳ Update</strong> to fetch covers and ratings for all games.
+                </p>
+              </div>
+
+              <div className="sync-section">
+                <h3>💾 Local image cache</h3>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13 }}>
+                  <input
+                    type="checkbox"
+                    checked={saveCoversLocally}
+                    onChange={e => setSaveCoversLocally(e.target.checked)}
+                  />
+                  Save cover images to disk
+                </label>
+                <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>
+                  When enabled, cover art is downloaded to <code>/data/covers/</code> inside the container
+                  and served locally. Covers survive if external image hosts go offline.
+                  Takes effect on the next sync or cover fetch.
                 </p>
               </div>
             </>

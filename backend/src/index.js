@@ -16,6 +16,7 @@ app.use('/api/settings', require('./routes/settings'));
 app.use('/api/queue',    require('./routes/queue'));
 app.use('/api/ongoing', require('./routes/ongoing'));
 app.use('/api/stats',   require('./routes/stats'));
+app.use('/api/covers',  require('./routes/covers'));
 
 const STATIC_DIR = path.join(__dirname, '../public');
 if (fs.existsSync(STATIC_DIR)) {

@@ -39,6 +39,7 @@ export const updateMetadata = () => call('/api/sync/update-metadata', { method: 
 export const fetchIGDBCovers = () => call('/api/sync/igdb', { method: 'POST' })
 export const fetchAOTYCovers = () => call('/api/sync/aoty', { method: 'POST' })
 export const fetchComicVineCovers = () => call('/api/sync/comicvine', { method: 'POST' })
+export const fetchGoogleBooksCovers = () => call('/api/sync/googlebooks', { method: 'POST' })
 export const getSimklPin    = () => call('/api/sync/simkl/pin')
 export const pollSimklPin   = (uc: string) => call(`/api/sync/simkl/pin/${uc}`)
 

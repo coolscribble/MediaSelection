@@ -30,6 +30,7 @@ router.get('/', async (req, res) => {
       igdb_client_id:       map.igdb_client_id     || '',
       igdb_client_set:      Boolean(map.igdb_client_secret),
       comicvine_api_set:    Boolean(map.comicvine_api_key),
+      save_covers_locally:  map.save_covers_locally === 'true',
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -39,6 +40,9 @@ router.post('/', async (req, res) => {
     const upsert = (k, v) => db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [k, v]);
 
     const scalar = ['simkl_client_id', 'simkl_access_token', 'anilist_username', 'mal_username', 'igdb_client_id', 'igdb_client_secret', 'comicvine_api_key'];
+    if (req.body.save_covers_locally !== undefined) {
+      await upsert('save_covers_locally', req.body.save_covers_locally ? 'true' : 'false');
+    }
     for (const key of scalar) {
       if (req.body[key] !== undefined) await upsert(key, req.body[key]);
     }

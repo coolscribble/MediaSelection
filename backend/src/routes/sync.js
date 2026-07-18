@@ -7,6 +7,7 @@ const { syncMAL } = require('../services/mal');
 const { syncIGDB } = require('../services/igdb');
 const { syncAOTY } = require('../services/aoty');
 const { syncComicVine } = require('../services/comicvine');
+const { syncGoogleBooks } = require('../services/googlebooks');
 
 router.get('/simkl/pin', async (req, res) => {
   try {
@@ -53,9 +54,15 @@ router.post('/aoty', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }) }
 });
 
-// Fetch ComicVine covers for comics
+// Fetch ComicVine covers for comics (legacy)
 router.post('/comicvine', async (req, res) => {
   try { res.json(await syncComicVine()) }
+  catch (e) { res.status(500).json({ error: e.message }) }
+});
+
+// Fetch comics covers via Google Books API (free, no key required)
+router.post('/googlebooks', async (req, res) => {
+  try { res.json(await syncGoogleBooks()) }
   catch (e) { res.status(500).json({ error: e.message }) }
 });
 

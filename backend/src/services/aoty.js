@@ -1,4 +1,5 @@
 const { db } = require('../database');
+const { cacheImage } = require('./imageCache');
 
 // iTunes Search API — no API key required
 const ITUNES_SEARCH = 'https://itunes.apple.com/search';
@@ -53,9 +54,10 @@ async function syncAOTY() {
       genre:     result.primaryGenreName ?? meta.genre,
     };
 
+    const localThumb = await cacheImage(album.id, thumb ?? album.thumbnail_url);
     await db.run(
       'UPDATE library_items SET thumbnail_url = ?, metadata = ?, external_id = ? WHERE id = ?',
-      [thumb ?? album.thumbnail_url, JSON.stringify(merged), String(result.collectionId), album.id]
+      [localThumb, JSON.stringify(merged), String(result.collectionId), album.id]
     );
     updated++;
 

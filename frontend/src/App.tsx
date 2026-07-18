@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { CATEGORIES, CATEGORY_LABELS, CATEGORY_ICONS, SlotsData, Settings } from './types'
-import { getSlots, getSettings, getStats, updateMetadata, fetchIGDBCovers, fetchAOTYCovers, fetchComicVineCovers } from './api'
+import { getSlots, getSettings, getStats, updateMetadata, fetchIGDBCovers, fetchAOTYCovers, fetchGoogleBooksCovers } from './api'
 import { toast, dismiss } from './notifications'
 import CategorySection from './components/CategorySection'
 import SettingsModal from './components/SettingsModal'
@@ -51,18 +51,18 @@ export default function App() {
     }
   }
 
-  const handleComicVine = async () => {
+  const handleGoogleBooks = async () => {
     setCvBusy(true)
-    const tid = toast('Fetching ComicVine covers…', 'info', true)
+    const tid = toast('Fetching comic covers via Google Books…', 'info', true)
     try {
-      const r = await fetchComicVineCovers() as { updated?: number; skipped?: number; error?: string }
+      const r = await fetchGoogleBooksCovers() as { updated?: number; skipped?: number; error?: string }
       if (r.error) throw new Error(r.error)
       await refresh()
       dismiss(tid)
       toast(`Comic covers: ${r.updated ?? 0} updated, ${r.skipped ?? 0} not found`, 'success')
     } catch (e: unknown) {
       dismiss(tid)
-      toast((e instanceof Error ? e.message : 'ComicVine failed'), 'error')
+      toast((e instanceof Error ? e.message : 'Google Books failed'), 'error')
     } finally {
       setCvBusy(false)
     }
@@ -109,7 +109,7 @@ export default function App() {
       <header className="header">
         <h1>🎲 Media Picker</h1>
         <div className="header-actions">
-          <button className="btn-ghost" onClick={handleComicVine} disabled={cvBusy} title="Fetch comic volume covers from ComicVine">
+          <button className="btn-ghost" onClick={handleGoogleBooks} disabled={cvBusy} title="Fetch comic volume covers via Google Books (free, no key needed)">
             {cvBusy ? '…' : '💬 Covers'}
           </button>
           <button className="btn-ghost" onClick={handleAOTY} disabled={aotyBusy} title="Fetch album cover art from iTunes">

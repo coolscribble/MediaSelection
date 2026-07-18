@@ -100,30 +100,17 @@ router.post('/sync/anilist', async (req, res) => {
 // POST /sync/simkl — sync watching shows from Simkl
 router.post('/sync/simkl', async (req, res) => {
   try {
-    const [cidRow, tokenRow, lastActRow] = await Promise.all([
+    const [cidRow, tokenRow] = await Promise.all([
       db.get('SELECT value FROM settings WHERE key = ?', ['simkl_client_id']),
       db.get('SELECT value FROM settings WHERE key = ?', ['simkl_access_token']),
-      db.get('SELECT value FROM settings WHERE key = ?', ['simkl_ongoing_last_activities']),
     ])
     if (!cidRow?.value || !tokenRow?.value) return res.status(400).json({ error: 'Simkl not configured' })
 
     const cid = cidRow.value
     const headers = simklHeaders(tokenRow.value, cid)
-    const savedAll = lastActRow?.value ? JSON.parse(lastActRow.value).all : null
 
-    // Phase 1: check activities — skip the heavy fetch if nothing has changed
-    const actRes = await fetch(`https://api.simkl.com/sync/activities?${simklQS(cid)}`, { headers })
-    if (!actRes.ok) throw new Error(`Simkl activities error: ${actRes.status}`)
-    const activities = await actRes.json()
-    const currentAll = activities.all
-
-    if (savedAll && savedAll === currentAll) {
-      return res.json({ series: 0, skipped: true })
-    }
-
-    // Phase 2: fetch watching shows; use date_from on subsequent syncs for delta only
-    const qs = simklQS(cid, savedAll ? { date_from: savedAll } : {})
-    const r = await fetch(`https://api.simkl.com/sync/all-items/watching/shows?${qs}`, { headers })
+    // Always full fetch — delta (date_from) skips shows that were deleted from the DB and need to come back
+    const r = await fetch(`https://api.simkl.com/sync/all-items/watching/shows?${simklQS(cid)}`, { headers })
     if (r.status === 404) return res.json({ series: 0 })
     if (!r.ok) throw new Error(`Simkl API error: ${r.status}`)
     const data = await r.json()
@@ -186,12 +173,6 @@ router.post('/sync/simkl', async (req, res) => {
       )
       count++
     }
-
-    // Persist the current activities timestamp for future delta syncs
-    await db.run(
-      'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
-      ['simkl_ongoing_last_activities', JSON.stringify({ all: currentAll })]
-    )
 
     res.json({ series: count })
   } catch (e) { res.status(500).json({ error: e.message }) }
