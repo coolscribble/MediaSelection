@@ -27,8 +27,9 @@ async function getAccessToken() {
   return cachedToken;
 }
 
-async function searchIGDB(title, clientId, token) {
-  const safe = title.replace(/"/g, '');
+const IGDB_FIELDS = 'fields name,cover.url,first_release_date,genres.name,platforms.name,total_rating;';
+
+async function igdbRequest(body, clientId, token) {
   const r = await fetch('https://api.igdb.com/v4/games', {
     method: 'POST',
     headers: {
@@ -36,11 +37,22 @@ async function searchIGDB(title, clientId, token) {
       'Client-ID': clientId,
       'Content-Type': 'text/plain',
     },
-    body: `fields name,cover.url,first_release_date,genres.name,platforms.name,total_rating; search "${safe}"; limit 1;`,
+    body,
   });
   if (!r.ok) return null;
   const data = await r.json();
   return data?.[0] || null;
+}
+
+// Exact ID lookup — used when the CSV already contains an IGDB ID
+async function lookupById(igdbId, clientId, token) {
+  return igdbRequest(`${IGDB_FIELDS} where id = ${igdbId}; limit 1;`, clientId, token);
+}
+
+// Title search — fallback when no IGDB ID is stored
+async function searchByTitle(title, clientId, token) {
+  const safe = title.replace(/"/g, '');
+  return igdbRequest(`${IGDB_FIELDS} search "${safe}"; limit 1;`, clientId, token);
 }
 
 async function syncIGDB() {
@@ -48,12 +60,15 @@ async function syncIGDB() {
   const token = await getAccessToken();
 
   const games = await db.all(
-    "SELECT id, title, thumbnail_url, metadata FROM library_items WHERE category = 'games'"
+    "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'games'"
   );
 
   let updated = 0, skipped = 0;
   for (const game of games) {
-    const result = await searchIGDB(game.title, clientId, token);
+    // Prefer the IGDB ID from the CSV (exact match); fall back to title search
+    const result = game.external_id
+      ? await lookupById(game.external_id, clientId, token)
+      : await searchByTitle(game.title, clientId, token);
     if (!result) { skipped++; continue; }
 
     // Build cover URL — cover_big size, WebP format for smaller file size
@@ -79,8 +94,7 @@ async function syncIGDB() {
     const merged = { ...existingMeta, ...igdbMeta };
 
     await db.run(
-      // Use IGDB cover when available; fall back to whatever was already stored
-      'UPDATE library_items SET thumbnail_url = ?, metadata = ?, external_id = COALESCE(external_id, ?) WHERE id = ?',
+      'UPDATE library_items SET thumbnail_url = ?, metadata = ?, external_id = ? WHERE id = ?',
       [thumb ?? game.thumbnail_url, JSON.stringify(merged), String(result.id), game.id]
     );
     updated++;
