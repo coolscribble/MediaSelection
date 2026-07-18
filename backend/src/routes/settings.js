@@ -29,7 +29,6 @@ router.get('/', async (req, res) => {
       queue_modes:        queueModes,
       igdb_client_id:     map.igdb_client_id     || '',
       igdb_client_set:    Boolean(map.igdb_client_secret),
-      aoty_api_set:       Boolean(map.aoty_api_key),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -38,7 +37,7 @@ router.post('/', async (req, res) => {
   try {
     const upsert = (k, v) => db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [k, v]);
 
-    const scalar = ['simkl_client_id', 'simkl_access_token', 'anilist_username', 'mal_username', 'igdb_client_id', 'igdb_client_secret', 'aoty_api_key'];
+    const scalar = ['simkl_client_id', 'simkl_access_token', 'anilist_username', 'mal_username', 'igdb_client_id', 'igdb_client_secret'];
     for (const key of scalar) {
       if (req.body[key] !== undefined) await upsert(key, req.body[key]);
     }
