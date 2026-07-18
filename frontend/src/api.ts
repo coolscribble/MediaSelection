@@ -37,13 +37,23 @@ export const syncMAL    = () => call('/api/sync/mal',    { method: 'POST' })
 export const updateMetadata = () => call('/api/sync/update-metadata', { method: 'POST' })
 export const fetchIGDBCovers = () => call('/api/sync/igdb', { method: 'POST' })
 export const fetchAOTYCovers = () => call('/api/sync/aoty', { method: 'POST' })
+export const fetchComicVineCovers = () => call('/api/sync/comicvine', { method: 'POST' })
 export const getSimklPin    = () => call('/api/sync/simkl/pin')
 export const pollSimklPin   = (uc: string) => call(`/api/sync/simkl/pin/${uc}`)
 
-export const importCSV = async (category: string, file: File) => {
-  const form = new FormData(); form.append('file', file)
+export const importCSV = async (category: string, file: File, platforms?: string[]) => {
+  const form = new FormData()
+  form.append('file', file)
+  if (platforms && platforms.length > 0) form.append('platforms', JSON.stringify(platforms))
   return call(`/api/import/csv/${category}`, { method: 'POST', body: form })
 }
+
+export const updateOngoingProgress = (id: number, watched_progress: number) =>
+  call(`/api/ongoing/item/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ watched_progress }),
+  })
 
 export const getQueue = (category: string) => call(`/api/queue/${category}`)
 export const addQueueItem = (category: string, title: string) =>

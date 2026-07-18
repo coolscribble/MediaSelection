@@ -27,8 +27,9 @@ router.get('/', async (req, res) => {
       mal_anime_states:   JSON.parse(map.mal_anime_states   || JSON.stringify(MAL_ANIME_STATES_DEFAULT)),
       mal_manga_states:   JSON.parse(map.mal_manga_states   || JSON.stringify(MAL_MANGA_STATES_DEFAULT)),
       queue_modes:        queueModes,
-      igdb_client_id:     map.igdb_client_id     || '',
-      igdb_client_set:    Boolean(map.igdb_client_secret),
+      igdb_client_id:       map.igdb_client_id     || '',
+      igdb_client_set:      Boolean(map.igdb_client_secret),
+      comicvine_api_set:    Boolean(map.comicvine_api_key),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -37,7 +38,7 @@ router.post('/', async (req, res) => {
   try {
     const upsert = (k, v) => db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [k, v]);
 
-    const scalar = ['simkl_client_id', 'simkl_access_token', 'anilist_username', 'mal_username', 'igdb_client_id', 'igdb_client_secret'];
+    const scalar = ['simkl_client_id', 'simkl_access_token', 'anilist_username', 'mal_username', 'igdb_client_id', 'igdb_client_secret', 'comicvine_api_key'];
     for (const key of scalar) {
       if (req.body[key] !== undefined) await upsert(key, req.body[key]);
     }

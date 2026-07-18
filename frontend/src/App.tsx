@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { CATEGORIES, CATEGORY_LABELS, CATEGORY_ICONS, SlotsData, Settings } from './types'
-import { getSlots, getSettings, getStats, updateMetadata, fetchIGDBCovers, fetchAOTYCovers } from './api'
+import { getSlots, getSettings, getStats, updateMetadata, fetchIGDBCovers, fetchAOTYCovers, fetchComicVineCovers } from './api'
 import { toast, dismiss } from './notifications'
 import CategorySection from './components/CategorySection'
 import SettingsModal from './components/SettingsModal'
@@ -19,6 +19,7 @@ export default function App() {
   const [updating, setUpdating] = useState(false)
   const [igdbBusy, setIgdbBusy] = useState(false)
   const [aotyBusy, setAotyBusy] = useState(false)
+  const [cvBusy, setCvBusy] = useState(false)
 
   const refresh = useCallback(async () => {
     try {
@@ -47,6 +48,23 @@ export default function App() {
       toast((e instanceof Error ? e.message : 'Update failed'), 'error')
     } finally {
       setUpdating(false)
+    }
+  }
+
+  const handleComicVine = async () => {
+    setCvBusy(true)
+    const tid = toast('Fetching ComicVine covers…', 'info', true)
+    try {
+      const r = await fetchComicVineCovers() as { updated?: number; skipped?: number; error?: string }
+      if (r.error) throw new Error(r.error)
+      await refresh()
+      dismiss(tid)
+      toast(`Comic covers: ${r.updated ?? 0} updated, ${r.skipped ?? 0} not found`, 'success')
+    } catch (e: unknown) {
+      dismiss(tid)
+      toast((e instanceof Error ? e.message : 'ComicVine failed'), 'error')
+    } finally {
+      setCvBusy(false)
     }
   }
 
@@ -91,7 +109,10 @@ export default function App() {
       <header className="header">
         <h1>🎲 Media Picker</h1>
         <div className="header-actions">
-          <button className="btn-ghost" onClick={handleAOTY} disabled={aotyBusy} title="Fetch album cover art from Album of the Year">
+          <button className="btn-ghost" onClick={handleComicVine} disabled={cvBusy} title="Fetch comic volume covers from ComicVine">
+            {cvBusy ? '…' : '💬 Covers'}
+          </button>
+          <button className="btn-ghost" onClick={handleAOTY} disabled={aotyBusy} title="Fetch album cover art from iTunes">
             {aotyBusy ? '…' : '🎵 Covers'}
           </button>
           <button className="btn-ghost" onClick={handleIGDB} disabled={igdbBusy} title="Fetch game cover art from IGDB (WebP)">

@@ -94,17 +94,27 @@ function normalizeComicsTitle(t) {
   return t.replace(/\s*#\d+\b.*$/, '').trim();
 }
 
-async function importCSV(buffer, category) {
+async function importCSV(buffer, category, options = {}) {
   const records = await parseCSV(buffer);
   let count = 0;
   // Used for within-batch deduplication when importing comics
   const seenTitles = new Set();
+
+  // Normalise platform filter to lowercase set for case-insensitive matching
+  const platformFilter = options.platforms?.length
+    ? new Set(options.platforms.map(p => p.toLowerCase()))
+    : null;
 
   for (const r of records) {
     // Skip games that are already completed or beaten — they belong in history, not the backlog
     if (category === 'games') {
       const completion = (r['Completion'] || '').trim();
       if (completion === 'Completed' || completion === 'Beaten') continue;
+      // Apply platform filter when the user selected specific platforms in the import UI
+      if (platformFilter) {
+        const platform = (r['Platform'] || r['platform'] || '').trim().toLowerCase();
+        if (platform && !platformFilter.has(platform)) continue;
+      }
     }
 
     let title;

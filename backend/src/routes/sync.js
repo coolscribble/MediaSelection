@@ -6,6 +6,7 @@ const { syncAniList, updateOngoingAiringInfo } = require('../services/anilist');
 const { syncMAL } = require('../services/mal');
 const { syncIGDB } = require('../services/igdb');
 const { syncAOTY } = require('../services/aoty');
+const { syncComicVine } = require('../services/comicvine');
 
 router.get('/simkl/pin', async (req, res) => {
   try {
@@ -46,9 +47,15 @@ router.post('/igdb', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }) }
 });
 
-// Fetch Album of the Year covers only
+// Fetch Album of the Year / iTunes covers only
 router.post('/aoty', async (req, res) => {
   try { res.json(await syncAOTY()) }
+  catch (e) { res.status(500).json({ error: e.message }) }
+});
+
+// Fetch ComicVine covers for comics
+router.post('/comicvine', async (req, res) => {
+  try { res.json(await syncComicVine()) }
   catch (e) { res.status(500).json({ error: e.message }) }
 });
 

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { OngoingCategoryDef, OngoingItem, ONGOING_CATEGORIES, AiringInfo } from '../types'
-import { getOngoingItems, addOngoingItem, deleteOngoingItem, syncOngoingAniList, syncOngoingSimkl } from '../api'
+import { getOngoingItems, addOngoingItem, deleteOngoingItem, syncOngoingAniList, syncOngoingSimkl, updateOngoingProgress } from '../api'
 import { toast, dismiss } from '../notifications'
 
 function formatAiring(ai: AiringInfo): string {
@@ -62,10 +62,18 @@ function OngoingRow({ category }: { category: OngoingCategoryDef }) {
   const [newTitle, setNewTitle] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [msg, setMsg] = useState('')
+  const [watchedMap, setWatchedMap] = useState<Record<number, number>>({})
+  const watchedTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({})
   const inputRef = useRef<HTMLInputElement>(null)
 
   const load = () =>
-    getOngoingItems(category.id).then(data => setItems(data as OngoingItem[])).catch(() => {})
+    getOngoingItems(category.id).then(data => {
+      const list = data as OngoingItem[]
+      setItems(list)
+      const map: Record<number, number> = {}
+      list.forEach(item => { map[item.id] = item.watched_progress ?? 0 })
+      setWatchedMap(map)
+    }).catch(() => {})
 
   useEffect(() => { load() }, [category.id])
   useEffect(() => { if (adding) inputRef.current?.focus() }, [adding])
@@ -81,6 +89,15 @@ function OngoingRow({ category }: { category: OngoingCategoryDef }) {
   const handleDelete = async (id: number) => {
     await deleteOngoingItem(id)
     load()
+  }
+
+  const handleWatched = (id: number, val: number) => {
+    const v = Math.max(0, isNaN(val) ? 0 : val)
+    setWatchedMap(prev => ({ ...prev, [id]: v }))
+    if (watchedTimers.current[id]) clearTimeout(watchedTimers.current[id])
+    watchedTimers.current[id] = setTimeout(() => {
+      updateOngoingProgress(id, v).catch(() => {})
+    }, 600)
   }
 
   const handleSync = async () => {
@@ -166,7 +183,12 @@ function OngoingRow({ category }: { category: OngoingCategoryDef }) {
           <span className="ongoing-empty">Nothing currently releasing — add manually or sync</span>
         )}
         {visibleItems.map(item => {
-          const airingStr = item.airing_info ? formatAiring(item.airing_info) : ''
+          const ai = item.airing_info
+          const airingStr = ai ? formatAiring(ai) : ''
+          const airedCount = ai ? (ai.total_episodes ?? ai.episodes_aired ?? null) : null
+          const watched = watchedMap[item.id] ?? 0
+          const showProgress = category.id === 'anime_ongoing' || category.id === 'series_ongoing' || category.id === 'manga_ongoing'
+          const unit = category.id === 'manga_ongoing' ? 'ch' : 'ep'
           return (
             <div key={item.id} className="ongoing-tile" title={item.title}>
               {item.thumbnail_url
@@ -176,6 +198,21 @@ function OngoingRow({ category }: { category: OngoingCategoryDef }) {
               <div className="ongoing-tile-info">
                 <span className="ongoing-tile-title">{item.title}</span>
                 {airingStr && <span className="ongoing-tile-airing">{airingStr}</span>}
+                {showProgress && (
+                  <div className="ongoing-tile-watched" onClick={e => e.stopPropagation()}>
+                    <span>👁</span>
+                    <input
+                      type="number"
+                      className="ongoing-watched-input"
+                      min={0}
+                      max={airedCount ?? undefined}
+                      value={watched}
+                      onChange={e => handleWatched(item.id, parseInt(e.target.value))}
+                    />
+                    {airedCount !== null && <span>/{airedCount}</span>}
+                    <span>{unit}</span>
+                  </div>
+                )}
               </div>
               <button
                 className="ongoing-tile-remove"

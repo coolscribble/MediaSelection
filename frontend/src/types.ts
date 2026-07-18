@@ -77,6 +77,7 @@ export interface OngoingItem {
   external_id: string | null
   metadata: Record<string, unknown>
   airing_info: AiringInfo | null
+  watched_progress: number
   source: string
 }
 
@@ -92,6 +93,7 @@ export interface Settings {
   queue_modes: Record<Category, boolean>
   igdb_client_id: string
   igdb_client_set: boolean
+  comicvine_api_set: boolean
 }
 
 export const ANILIST_STATE_OPTIONS = [

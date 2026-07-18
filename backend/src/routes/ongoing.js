@@ -45,6 +45,7 @@ router.get('/:category', async (req, res) => {
       ...i,
       metadata: JSON.parse(i.metadata || '{}'),
       airing_info: i.airing_info ? JSON.parse(i.airing_info) : null,
+      watched_progress: i.watched_progress ?? 0,
     })))
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
@@ -185,13 +186,21 @@ router.delete('/item/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// PATCH /item/:id — update progress/airing info manually
+// PATCH /item/:id — update watched progress or airing info
 router.patch('/item/:id', async (req, res) => {
   try {
-    const { airing_info } = req.body
+    const { airing_info, watched_progress } = req.body
+    const sets = [], vals = []
     if (airing_info !== undefined) {
-      await db.run('UPDATE ongoing_items SET airing_info = ? WHERE id = ?',
-        [airing_info ? JSON.stringify(airing_info) : null, Number(req.params.id)])
+      sets.push('airing_info = ?')
+      vals.push(airing_info ? JSON.stringify(airing_info) : null)
+    }
+    if (watched_progress !== undefined) {
+      sets.push('watched_progress = ?')
+      vals.push(Math.max(0, Number(watched_progress) || 0))
+    }
+    if (sets.length) {
+      await db.run(`UPDATE ongoing_items SET ${sets.join(', ')} WHERE id = ?`, [...vals, Number(req.params.id)])
     }
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }

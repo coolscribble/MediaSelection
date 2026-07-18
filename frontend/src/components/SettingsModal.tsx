@@ -15,6 +15,7 @@ const DEFAULT_SETTINGS: Settings = {
   mal_anime_states: ['plantowatch'], mal_manga_states: ['plantoread'],
   queue_modes: { movies: false, series: false, anime: false, manga: false, games: false, comics: false, albums: false },
   igdb_client_id: '', igdb_client_set: false,
+  comicvine_api_set: false,
 }
 
 export default function SettingsModal({ onClose }: Props) {
@@ -23,6 +24,7 @@ export default function SettingsModal({ onClose }: Props) {
   const [clientId, setClientId] = useState('')
   const [igdbClientId, setIgdbClientId] = useState('')
   const [igdbClientSecret, setIgdbClientSecret] = useState('')
+  const [comicvineApiKey, setComicvineApiKey] = useState('')
   const [aniUser, setAniUser] = useState('')
   const [malUser, setMalUser] = useState('')
   const [aniStates, setAniStates] = useState<string[]>(['PLANNING'])
@@ -67,6 +69,7 @@ export default function SettingsModal({ onClose }: Props) {
         queue_modes: queueModes,
         igdb_client_id: igdbClientId,
         ...(igdbClientSecret && { igdb_client_secret: igdbClientSecret }),
+        ...(comicvineApiKey && { comicvine_api_key: comicvineApiKey }),
       })
       setMsg('Saved')
       setS(prev => ({ ...prev, queue_modes: queueModes as Settings['queue_modes'] }))
@@ -176,6 +179,28 @@ export default function SettingsModal({ onClose }: Props) {
                 )}
                 <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>
                   Get your Client ID at <strong>simkl.com/apps</strong> → New App (free).
+                </p>
+              </div>
+
+              <div className="sync-section">
+                <h3>💬 ComicVine (Comics covers)</h3>
+                <div className="form-group">
+                  <label>API Key</label>
+                  <input
+                    type="password"
+                    value={comicvineApiKey}
+                    onChange={e => setComicvineApiKey(e.target.value)}
+                    placeholder={s.comicvine_api_set ? '••••••••• (saved)' : 'paste API key here'}
+                  />
+                </div>
+                <div className="sync-row">
+                  <span className={`sync-status${s.comicvine_api_set ? ' ok' : ''}`}>
+                    {s.comicvine_api_set ? '✓ Key saved' : '✗ Not configured'}
+                  </span>
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>
+                  Get a free key at <strong>comicvine.gamespot.com/api/</strong>.
+                  Hit <strong>Save</strong> then <strong>💬 Covers</strong> to fetch volume artwork.
                 </p>
               </div>
 
