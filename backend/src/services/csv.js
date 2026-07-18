@@ -106,10 +106,15 @@ async function importCSV(buffer, category, options = {}) {
     : null;
 
   for (const r of records) {
-    // Skip games that are already completed or beaten — they belong in history, not the backlog
+    // Skip games that are already completed or beaten — they belong in history, not the backlog.
+    // InfiniteBacklog exports both a "Status" column (Playing/Completed/Dropped/…) and a
+    // "Completion" column (Unfinished/Beaten/Completed/…). We filter on Completion but always
+    // allow rows where Status says the user is actively playing (covers replays of beaten games).
     if (category === 'games') {
-      const completion = (r['Completion'] || '').trim();
-      if (completion === 'Completed' || completion === 'Beaten') continue;
+      const completion = (r['Completion'] || r['completion'] || '').trim().toLowerCase();
+      const status = (r['Status'] || r['status'] || '').trim().toLowerCase();
+      const isPlaying = status === 'playing' || status === 'currently playing' || status === 'in progress';
+      if (!isPlaying && (completion === 'completed' || completion === 'beaten')) continue;
       // Apply platform filter when the user selected specific platforms in the import UI
       if (platformFilter) {
         const platform = (r['Platform'] || r['platform'] || '').trim().toLowerCase();
@@ -163,8 +168,10 @@ async function importQueueCSV(buffer, category) {
 
   for (const r of records) {
     if (category === 'games') {
-      const completion = (r['Completion'] || '').trim();
-      if (completion === 'Completed' || completion === 'Beaten') continue;
+      const completion = (r['Completion'] || r['completion'] || '').trim().toLowerCase();
+      const status = (r['Status'] || r['status'] || '').trim().toLowerCase();
+      const isPlaying = status === 'playing' || status === 'currently playing' || status === 'in progress';
+      if (!isPlaying && (completion === 'completed' || completion === 'beaten')) continue;
     }
 
     let title;

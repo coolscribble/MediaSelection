@@ -141,10 +141,10 @@ The **⟳ Update** button in the header refreshes episode counts and airing date
 
 ### Games (InfiniteBacklog)
 ```
-Game name,Platform,Completion,IGDB ID,...
-Hades,PC,Playing,1145360,...
+IGDB ID,Game name,Game release date,...,Platform,Type,Status,Completion,...
+315367,"LEGO Harry Potter Collection",2024-10-08,...,PlayStation 5,,Playing,Unfinished,...
 ```
-Rows with `Completion = Completed` or `Beaten` are skipped. After picking the file a platform picker appears — uncheck any platforms you don't want to import.
+Rows with `Completion = Completed` or `Beaten` are skipped **unless** the `Status` column says `Playing` (e.g. you are replaying a finished game). The filter is case-insensitive. After picking the file a platform picker appears — uncheck any platforms you don't want to import.
 
 ### Comics (CLZ / ComicBase)
 ```
