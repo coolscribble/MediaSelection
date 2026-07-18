@@ -134,13 +134,13 @@ router.post('/sync/simkl', async (req, res) => {
           if (detailRes.ok) {
             const detail = await detailRes.json()
             showStatus = (detail.status || '').toLowerCase()
-            // aired_episodes is the count currently out; total_episodes is the planned run length
-            const aired = typeof detail.aired_episodes === 'number' ? detail.aired_episodes : null
-            const total = typeof detail.total_episodes === 'number' ? detail.total_episodes : null
-            if (aired !== null) {
+            // aired_episodes / total_episodes may be number or string depending on Simkl's response
+            const aired = detail.aired_episodes != null ? Number(detail.aired_episodes) : null
+            const total = detail.total_episodes != null ? Number(detail.total_episodes) : null
+            if (aired !== null && !isNaN(aired)) {
               airingInfo = JSON.stringify({
                 episodes_aired: aired,
-                total_episodes: total,
+                total_episodes: (!isNaN(total) && total !== null) ? total : null,
                 next_episode: null,
                 next_air_time: null,
               })
@@ -159,11 +159,15 @@ router.post('/sync/simkl', async (req, res) => {
           ['series_ongoing', extId]
         )
         if (existing) {
-          // Update both status metadata and episode count so the "behind" indicator stays fresh
-          await db.run(
-            'UPDATE ongoing_items SET metadata = ?, airing_info = ? WHERE id = ?',
-            [meta, airingInfo, existing.id]
-          )
+          // Only update airing_info when we have fresh data — never overwrite a good value with null
+          if (airingInfo !== null) {
+            await db.run(
+              'UPDATE ongoing_items SET metadata = ?, airing_info = ? WHERE id = ?',
+              [meta, airingInfo, existing.id]
+            )
+          } else {
+            await db.run('UPDATE ongoing_items SET metadata = ? WHERE id = ?', [meta, existing.id])
+          }
           continue
         }
       }

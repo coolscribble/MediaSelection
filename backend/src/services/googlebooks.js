@@ -22,6 +22,10 @@ function buildCoverUrl(item) {
   return url.replace('zoom=1', 'zoom=3').replace('&edge=curl', '').replace(/^http:/, 'https:');
 }
 
+function titleSlug(title) {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
+}
+
 async function syncGoogleBooks() {
   const comics = await db.all(
     "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'comics'"
@@ -33,7 +37,8 @@ async function syncGoogleBooks() {
     const thumb = result ? buildCoverUrl(result) : null;
     if (!thumb) { skipped++; continue; }
 
-    const localThumb = await cacheImage(comic.id, thumb);
+    // Use a title-slug key so cached covers survive CSV re-imports (new IDs, same title)
+    const localThumb = await cacheImage(`comics_${titleSlug(comic.title)}`, thumb);
     const meta = JSON.parse(comic.metadata || '{}');
     const vi = result.volumeInfo || {};
     const merged = {
