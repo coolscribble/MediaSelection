@@ -101,15 +101,27 @@ async function importCSV(buffer, category) {
 
     let title;
     if (category === 'comics') {
+      // Skip issues the user has already read
+      const markedRead = (r['Marked Read'] || '').trim();
+      if (markedRead === '1') continue;
+
       // Prefer Series Name (already de-issued) over Full Title; strip any remaining #N
       const raw = r['Series Name'] || r['series name'] || extractTitle(r);
       if (!raw) continue;
       title = normalizeComicsTitle(raw);
       if (!title) continue;
-      // Skip duplicates — every issue in a series maps to the same series title
+
+      // Deduplicate within this batch
       const key = title.toLowerCase();
       if (seenTitles.has(key)) continue;
       seenTitles.add(key);
+
+      // Also skip if this series title already exists in the library (re-import safety)
+      const dbDup = await db.get(
+        "SELECT id FROM library_items WHERE category = 'comics' AND LOWER(title) = LOWER(?)",
+        [title]
+      );
+      if (dbDup) continue;
     } else {
       title = extractTitle(r);
       if (!title) continue;
@@ -139,13 +151,23 @@ async function importQueueCSV(buffer, category) {
 
     let title;
     if (category === 'comics') {
+      const markedRead = (r['Marked Read'] || '').trim();
+      if (markedRead === '1') continue;
+
       const raw = r['Series Name'] || r['series name'] || extractTitle(r);
       if (!raw) continue;
       title = normalizeComicsTitle(raw);
       if (!title) continue;
+
       const key = title.toLowerCase();
       if (seenTitles.has(key)) continue;
       seenTitles.add(key);
+
+      const dbDup = await db.get(
+        "SELECT id FROM queue_items WHERE category = 'comics' AND LOWER(title) = LOWER(?)",
+        [title]
+      );
+      if (dbDup) continue;
     } else {
       title = extractTitle(r);
       if (!title) continue;

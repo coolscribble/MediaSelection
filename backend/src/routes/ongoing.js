@@ -118,20 +118,37 @@ router.post('/sync/simkl', async (req, res) => {
     for (const entry of (data.shows || [])) {
       const show = entry.show
       if (!show) continue
-      // Skip shows that have definitively ended — only keep airing or unknown-status shows
-      const status = (show.status || '').toLowerCase()
-      if (status === 'ended' || status === 'canceled' || status === 'cancelled') continue
       const extId = show.ids?.simkl ? String(show.ids.simkl) : null
       const thumb = show.poster ? `https://simkl.in/posters/${show.poster}_m.webp` : null
-      // Store status in metadata so the frontend can filter without extra API calls
-      const meta = JSON.stringify({ year: show.year, status: show.status || null })
+
+      // Fetch the show's real airing status from Simkl show details endpoint.
+      // The all-items response doesn't include status, so we need a separate call.
+      let showStatus = null
+      if (extId) {
+        try {
+          const detailRes = await fetch(
+            `https://api.simkl.com/tv/${extId}?extended=full&client_id=${cidRow.value}`
+          )
+          if (detailRes.ok) {
+            const detail = await detailRes.json()
+            showStatus = (detail.status || '').toLowerCase()
+          }
+        } catch { /* keep showStatus null — include by default */ }
+        // Small delay to stay within Simkl rate limits
+        await new Promise(r => setTimeout(r, 300))
+      }
+
+      // Skip shows that have definitely ended
+      if (showStatus === 'ended' || showStatus === 'canceled' || showStatus === 'cancelled') continue
+
+      const meta = JSON.stringify({ year: show.year, status: showStatus || null })
       if (extId) {
         const existing = await db.get(
           'SELECT id FROM ongoing_items WHERE category = ? AND external_id = ?',
           ['series_ongoing', extId]
         )
         if (existing) {
-          // Update status on re-sync so ended shows can be caught next time
+          // Update status so shows that ended since last sync get removed next time
           await db.run('UPDATE ongoing_items SET metadata = ? WHERE id = ?', [meta, existing.id])
           continue
         }

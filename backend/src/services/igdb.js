@@ -79,9 +79,9 @@ async function syncIGDB() {
     const merged = { ...existingMeta, ...igdbMeta };
 
     await db.run(
-      // Only set thumbnail if not already present (preserve manually uploaded covers)
-      'UPDATE library_items SET thumbnail_url = COALESCE(thumbnail_url, ?), metadata = ?, external_id = COALESCE(external_id, ?) WHERE id = ?',
-      [thumb, JSON.stringify(merged), String(result.id), game.id]
+      // Use IGDB cover when available; fall back to whatever was already stored
+      'UPDATE library_items SET thumbnail_url = ?, metadata = ?, external_id = COALESCE(external_id, ?) WHERE id = ?',
+      [thumb ?? game.thumbnail_url, JSON.stringify(merged), String(result.id), game.id]
     );
     updated++;
 
