@@ -23,6 +23,20 @@ function formatAiring(ai: AiringInfo): string {
   return [epPart, nextPart].filter(Boolean).join(' · ')
 }
 
+// An item is still releasing if:
+//   - no airing_info (manually added — assume active)
+//   - OR total_episodes is unknown (ongoing)
+//   - OR next episode is still upcoming
+//   - OR episodes_aired < total_episodes (not done yet)
+function isStillReleasing(item: OngoingItem): boolean {
+  const ai = item.airing_info
+  if (!ai) return true
+  if (ai.total_episodes === null) return true
+  if (ai.next_air_time && ai.next_air_time > Date.now()) return true
+  if (ai.episodes_aired < (ai.total_episodes ?? Infinity)) return true
+  return false
+}
+
 export default function OngoingSection() {
   return (
     <div className="ongoing-section">
@@ -86,6 +100,9 @@ function OngoingRow({ category }: { category: OngoingCategoryDef }) {
     }
   }
 
+  // Only show items that are still actively releasing
+  const visibleItems = items.filter(isStillReleasing)
+
   return (
     <div className="ongoing-row">
       <div className="ongoing-row-head">
@@ -132,23 +149,25 @@ function OngoingRow({ category }: { category: OngoingCategoryDef }) {
         </div>
       )}
 
-      <div className="ongoing-chips">
-        {items.length === 0 && !adding && (
-          <span className="ongoing-empty">Nothing here yet — add manually or sync</span>
+      {/* Tile grid — one card per releasing show/anime/comic/game */}
+      <div className="ongoing-tiles">
+        {visibleItems.length === 0 && !adding && (
+          <span className="ongoing-empty">Nothing currently releasing — add manually or sync</span>
         )}
-        {items.map(item => {
+        {visibleItems.map(item => {
           const airingStr = item.airing_info ? formatAiring(item.airing_info) : ''
           return (
-            <div key={item.id} className={`ongoing-chip${airingStr ? ' has-airing' : ''}`} title={item.title}>
-              {item.thumbnail_url && (
-                <img className="ongoing-chip-thumb" src={item.thumbnail_url} alt="" />
-              )}
-              <div className="ongoing-chip-content">
-                <span className="ongoing-chip-title">{item.title}</span>
-                {airingStr && <span className="ongoing-chip-airing">{airingStr}</span>}
+            <div key={item.id} className="ongoing-tile" title={item.title}>
+              {item.thumbnail_url
+                ? <img className="ongoing-tile-thumb" src={item.thumbnail_url} alt="" loading="lazy" />
+                : <div className="ongoing-tile-thumb-placeholder">{category.icon}</div>
+              }
+              <div className="ongoing-tile-info">
+                <span className="ongoing-tile-title">{item.title}</span>
+                {airingStr && <span className="ongoing-tile-airing">{airingStr}</span>}
               </div>
               <button
-                className="ongoing-chip-remove"
+                className="ongoing-tile-remove"
                 onClick={() => handleDelete(item.id)}
                 title="Remove"
               >✕</button>

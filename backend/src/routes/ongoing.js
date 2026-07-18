@@ -118,6 +118,9 @@ router.post('/sync/simkl', async (req, res) => {
     for (const entry of (data.shows || [])) {
       const show = entry.show
       if (!show) continue
+      // Skip shows that have finished airing — only keep actively releasing or unknown-status shows
+      const status = (show.status || '').toLowerCase()
+      if (status === 'ended' || status === 'canceled' || status === 'cancelled') continue
       const extId = show.ids?.simkl ? String(show.ids.simkl) : null
       if (extId) {
         const existing = await db.get(

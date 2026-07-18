@@ -43,8 +43,6 @@ export default function App() {
     }
   }
 
-  const statEntries = CATEGORIES.filter(c => (stats[c] ?? 0) > 0)
-
   if (loading) return <div className="loading">Loading…</div>
 
   return (
@@ -61,16 +59,15 @@ export default function App() {
         </div>
       </header>
 
-      {statEntries.length > 0 && (
-        <div className="stats-bar">
-          <span className="stats-label">Cleared from backlog:</span>
-          {statEntries.map(c => (
-            <span key={c} className="stats-item">
-              {CATEGORY_ICONS[c]} {stats[c]} {CATEGORY_LABELS[c]}
-            </span>
-          ))}
-        </div>
-      )}
+      {/* Finish counter — always visible, shows 0 for uncompleted categories */}
+      <div className="stats-bar">
+        <span className="stats-label">Finished:</span>
+        {CATEGORIES.map(c => (
+          <span key={c} className="stats-item">
+            {CATEGORY_ICONS[c]} {stats[c] ?? 0} {CATEGORY_LABELS[c]}
+          </span>
+        ))}
+      </div>
 
       <main className="main-grid">
         {CATEGORIES.map(cat => (

@@ -90,6 +90,8 @@ export interface Settings {
   mal_anime_states: string[]
   mal_manga_states: string[]
   queue_modes: Record<Category, boolean>
+  igdb_client_id: string
+  igdb_client_set: boolean
 }
 
 export const ANILIST_STATE_OPTIONS = [

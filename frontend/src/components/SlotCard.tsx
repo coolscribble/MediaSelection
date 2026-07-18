@@ -61,6 +61,8 @@ export default function SlotCard({ slot, queueMode, onRefresh }: Props) {
         }
         {!isEmpty && (
           <>
+            {/* Progress only for categories that track episodes/chapters — not movies or games */}
+            {slot.category !== 'movies' && slot.category !== 'games' && (
             <div className="slot-progress">
               <input
                 className="slot-progress-input"
@@ -83,6 +85,7 @@ export default function SlotCard({ slot, queueMode, onRefresh }: Props) {
                 disabled={total !== null && prog >= total}
               >+</button>
             </div>
+            )}
             <textarea
               className="slot-note"
               placeholder="Add a note…"

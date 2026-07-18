@@ -4,6 +4,7 @@ const { db } = require('../database');
 const { getPin, pollPin, syncSimkl } = require('../services/simkl');
 const { syncAniList, updateOngoingAiringInfo } = require('../services/anilist');
 const { syncMAL } = require('../services/mal');
+const { syncIGDB } = require('../services/igdb');
 
 router.get('/simkl/pin', async (req, res) => {
   try {
@@ -38,12 +39,14 @@ router.post('/mal', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Refresh metadata (episode counts, airing info) for all existing items
+// Refresh metadata (episode counts, airing info, IGDB covers) for all existing items
 router.post('/update-metadata', async (req, res) => {
   const result = {};
   try { result.anilist = await syncAniList() } catch (e) { result.anilist_error = e.message }
   try { result.simkl = await syncSimkl() } catch (e) { result.simkl_error = e.message }
   try { result.ongoing = await updateOngoingAiringInfo() } catch (e) { result.ongoing_error = e.message }
+  // IGDB is optional — only runs if credentials are configured
+  try { result.igdb = await syncIGDB() } catch (e) { result.igdb_error = e.message }
   res.json(result);
 });
 

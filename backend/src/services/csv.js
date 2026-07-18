@@ -8,6 +8,9 @@ const SKIP_METADATA_COLS = new Set(['Progress notes', 'progress notes', 'notes',
 function extractTitle(r) {
   return (
     r['Game name'] || r['game name'] ||
+    // Comics exports use "Full Title" (individual issue) or "Series Name" as fallback
+    r['Full Title'] || r['full title'] ||
+    r['Series Name'] || r['series name'] ||
     r['Title'] || r['title'] ||
     r['Name'] || r['name'] ||
     r['Series'] || r['series'] ||
@@ -30,11 +33,18 @@ function buildMetadata(r) {
   if (r['Platform']) meta.platform = r['Platform'];
   if (r['Status']) meta.status = r['Status'];
   if (r['Completion']) meta.completion = r['Completion'];
+  // "Publisher" (games) or "Publisher Name" (comics exports)
   if (r['Publisher']) meta.publisher = r['Publisher'];
+  if (r['Publisher Name']) meta.publisher = r['Publisher Name'];
   if (r['Game release date']) meta.releaseDate = r['Game release date'];
+  // Comics-specific fields from CLZ / ComicBase style exports
+  if (r['Series Name']) meta.series = r['Series Name'];
+  if (r['Release Date']) meta.releaseDate = r['Release Date'];
+  if (r['Media Format']) meta.format = r['Media Format'];
+  if (r['In Collection']) meta.inCollection = r['In Collection'];
+  if (r['Marked Read']) meta.markedRead = r['Marked Read'];
   const issue = r['Issue #'] || r['Issue Number'] || r['issue'];
   if (issue) meta.issue = issue;
-  // Never include progress notes or other long-form text columns
   return meta;
 }
 
@@ -77,6 +87,11 @@ async function importCSV(buffer, category) {
   for (const r of records) {
     const title = extractTitle(r);
     if (!title) continue;
+    // Skip games that are already completed or beaten — they belong in history, not the backlog
+    if (category === 'games') {
+      const completion = (r['Completion'] || '').trim();
+      if (completion === 'Completed' || completion === 'Beaten') continue;
+    }
     await db.run(
       'INSERT INTO library_items (category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?)',
       [category, title.trim(), extractExternalId(r) || null, extractThumbnail(r) || null, JSON.stringify(buildMetadata(r)), 'csv']
@@ -94,6 +109,11 @@ async function importQueueCSV(buffer, category) {
   for (const r of records) {
     const title = extractTitle(r);
     if (!title) continue;
+    // Same completion filter as library import — skip finished games
+    if (category === 'games') {
+      const completion = (r['Completion'] || '').trim();
+      if (completion === 'Completed' || completion === 'Beaten') continue;
+    }
     await db.run(
       'INSERT INTO queue_items (category, position, title, external_id, thumbnail_url, metadata) VALUES (?, ?, ?, ?, ?, ?)',
       [category, pos++, title.trim(), extractExternalId(r) || null, extractThumbnail(r) || null, JSON.stringify(buildMetadata(r))]

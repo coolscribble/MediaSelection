@@ -14,12 +14,15 @@ const DEFAULT_SETTINGS: Settings = {
   anilist_states: ['PLANNING'], simkl_states: ['plantowatch'],
   mal_anime_states: ['plantowatch'], mal_manga_states: ['plantoread'],
   queue_modes: { movies: false, series: false, anime: false, manga: false, games: false, comics: false },
+  igdb_client_id: '', igdb_client_set: false,
 }
 
 export default function SettingsModal({ onClose }: Props) {
   const [tab, setTab] = useState<'connections' | 'states' | 'queue'>('connections')
   const [s, setS] = useState<Settings>(DEFAULT_SETTINGS)
   const [clientId, setClientId] = useState('')
+  const [igdbClientId, setIgdbClientId] = useState('')
+  const [igdbClientSecret, setIgdbClientSecret] = useState('')
   const [aniUser, setAniUser] = useState('')
   const [malUser, setMalUser] = useState('')
   const [aniStates, setAniStates] = useState<string[]>(['PLANNING'])
@@ -36,6 +39,7 @@ export default function SettingsModal({ onClose }: Props) {
     getSettings().then((data: Settings) => {
       setS(data)
       setClientId(data.simkl_client_id)
+      setIgdbClientId(data.igdb_client_id ?? '')
       setAniUser(data.anilist_username)
       setMalUser(data.mal_username)
       setAniStates(data.anilist_states ?? ['PLANNING'])
@@ -61,6 +65,8 @@ export default function SettingsModal({ onClose }: Props) {
         mal_anime_states: malAnimeStates,
         mal_manga_states: malMangaStates,
         queue_modes: queueModes,
+        igdb_client_id: igdbClientId,
+        ...(igdbClientSecret && { igdb_client_secret: igdbClientSecret }),
       })
       setMsg('Saved')
       setS(prev => ({ ...prev, queue_modes: queueModes as Settings['queue_modes'] }))
@@ -170,6 +176,32 @@ export default function SettingsModal({ onClose }: Props) {
                 )}
                 <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>
                   Get your Client ID at <strong>simkl.com/apps</strong> → New App (free).
+                </p>
+              </div>
+
+              <div className="sync-section">
+                <h3>🎮 IGDB (Games metadata + covers)</h3>
+                <div className="form-group">
+                  <label>Client ID</label>
+                  <input value={igdbClientId} onChange={e => setIgdbClientId(e.target.value)} placeholder="from dev.twitch.tv" />
+                </div>
+                <div className="form-group">
+                  <label>Client Secret</label>
+                  <input
+                    type="password"
+                    value={igdbClientSecret}
+                    onChange={e => setIgdbClientSecret(e.target.value)}
+                    placeholder={s.igdb_client_set ? '••••••••• (saved)' : 'paste secret here'}
+                  />
+                </div>
+                <div className="sync-row">
+                  <span className={`sync-status${s.igdb_client_set ? ' ok' : ''}`}>
+                    {s.igdb_client_set ? '✓ Secret saved' : '✗ Not configured'}
+                  </span>
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>
+                  Register a free app at <strong>dev.twitch.tv/console</strong> to get credentials.
+                  Hit <strong>Save</strong> then <strong>⟳ Update</strong> to fetch covers and ratings for all games.
                 </p>
               </div>
             </>
