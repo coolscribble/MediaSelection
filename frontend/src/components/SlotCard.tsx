@@ -59,8 +59,8 @@ export default function SlotCard({ slot, queueMode, onRefresh }: Props) {
           ? <span className="slot-empty">empty</span>
           : <span className="slot-title">{slot.title}</span>
         }
-        {!isEmpty && slot.category === 'albums' && slot.metadata?.artist && (
-          <span className="slot-subtitle">{slot.metadata.artist as string}</span>
+        {!isEmpty && slot.category === 'albums' && typeof slot.metadata?.artist === 'string' && (
+          <span className="slot-subtitle">{slot.metadata.artist}</span>
         )}
         {!isEmpty && (
           <>
