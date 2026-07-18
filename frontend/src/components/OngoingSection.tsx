@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { OngoingCategoryDef, OngoingItem, ONGOING_CATEGORIES, AiringInfo } from '../types'
 import { getOngoingItems, addOngoingItem, deleteOngoingItem, syncOngoingAniList, syncOngoingSimkl } from '../api'
+import { toast, dismiss } from '../notifications'
 
 function formatAiring(ai: AiringInfo): string {
   const epPart = ai.total_episodes
@@ -85,6 +86,8 @@ function OngoingRow({ category }: { category: OngoingCategoryDef }) {
   const handleSync = async () => {
     setSyncing(true)
     setMsg('')
+    const src = category.syncSource === 'anilist' ? 'AniList' : 'Simkl'
+    const tid = toast(`Syncing ${category.label} from ${src}…`, 'info', true)
     try {
       let count = 0
       if (category.syncSource === 'anilist') {
@@ -95,9 +98,14 @@ function OngoingRow({ category }: { category: OngoingCategoryDef }) {
         count = r[category.resultKey ?? ''] ?? 0
       }
       setMsg(`+${count} added`)
+      dismiss(tid)
+      toast(`${category.label}: +${count} added from ${src}`, 'success')
       load()
     } catch (e: unknown) {
-      setMsg(e instanceof Error ? e.message : 'Sync failed')
+      const err = e instanceof Error ? e.message : 'Sync failed'
+      setMsg(err)
+      dismiss(tid)
+      toast(`${category.label} sync failed: ${err}`, 'error')
     } finally {
       setSyncing(false)
     }

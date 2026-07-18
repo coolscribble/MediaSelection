@@ -1,10 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { CATEGORIES, CATEGORY_LABELS, CATEGORY_ICONS, SlotsData, Settings } from './types'
 import { getSlots, getSettings, getStats, updateMetadata, fetchIGDBCovers } from './api'
+import { toast, dismiss } from './notifications'
 import CategorySection from './components/CategorySection'
 import SettingsModal from './components/SettingsModal'
 import SyncModal from './components/SyncModal'
 import OngoingSection from './components/OngoingSection'
+import ToastContainer from './components/ToastContainer'
 
 export default function App() {
   const [slots, setSlots] = useState<SlotsData | null>(null)
@@ -15,9 +17,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [syncOpen, setSyncOpen] = useState(false)
   const [updating, setUpdating] = useState(false)
-  const [updateMsg, setUpdateMsg] = useState('')
   const [igdbBusy, setIgdbBusy] = useState(false)
-  const [igdbMsg, setIgdbMsg] = useState('')
 
   const refresh = useCallback(async () => {
     try {
@@ -35,32 +35,34 @@ export default function App() {
 
   const handleUpdate = async () => {
     setUpdating(true)
-    setUpdateMsg('')
+    const tid = toast('Updating metadata from APIs…', 'info', true)
     try {
       await updateMetadata()
       await refresh()
-      setUpdateMsg('✓ Updated')
+      dismiss(tid)
+      toast('Metadata updated', 'success')
     } catch (e: unknown) {
-      setUpdateMsg('✗ ' + (e instanceof Error ? e.message : 'Error'))
+      dismiss(tid)
+      toast((e instanceof Error ? e.message : 'Update failed'), 'error')
     } finally {
       setUpdating(false)
-      setTimeout(() => setUpdateMsg(''), 4000)
     }
   }
 
   const handleIGDB = async () => {
     setIgdbBusy(true)
-    setIgdbMsg('')
+    const tid = toast('Fetching IGDB game covers…', 'info', true)
     try {
       const r = await fetchIGDBCovers() as { updated?: number; skipped?: number; error?: string }
       if (r.error) throw new Error(r.error)
       await refresh()
-      setIgdbMsg(`✓ ${r.updated ?? 0} covers`)
+      dismiss(tid)
+      toast(`Covers loaded: ${r.updated ?? 0} updated, ${r.skipped ?? 0} not found`, 'success')
     } catch (e: unknown) {
-      setIgdbMsg('✗ ' + (e instanceof Error ? e.message : 'Error'))
+      dismiss(tid)
+      toast((e instanceof Error ? e.message : 'IGDB failed'), 'error')
     } finally {
       setIgdbBusy(false)
-      setTimeout(() => setIgdbMsg(''), 5000)
     }
   }
 
@@ -71,8 +73,6 @@ export default function App() {
       <header className="header">
         <h1>🎲 Media Picker</h1>
         <div className="header-actions">
-          {igdbMsg && <span style={{ fontSize: 12, color: igdbMsg.startsWith('✓') ? 'var(--success)' : 'var(--danger)' }}>{igdbMsg}</span>}
-          {updateMsg && <span style={{ fontSize: 12, color: updateMsg.startsWith('✓') ? 'var(--success)' : 'var(--danger)' }}>{updateMsg}</span>}
           <button className="btn-ghost" onClick={handleIGDB} disabled={igdbBusy} title="Fetch game cover art from IGDB (WebP)">
             {igdbBusy ? '…' : '🎮 Covers'}
           </button>
@@ -122,6 +122,7 @@ export default function App() {
 
       {settingsOpen && <SettingsModal onClose={() => { setSettingsOpen(false); refresh() }} />}
       {syncOpen    && <SyncModal     onClose={() => { setSyncOpen(false);    refresh() }} />}
+      <ToastContainer />
     </div>
   )
 }

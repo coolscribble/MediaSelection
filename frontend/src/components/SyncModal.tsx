@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { CATEGORIES, CATEGORY_LABELS, CATEGORY_ICONS, Category } from '../types'
 import { syncAniList, syncSimkl, syncMAL, importCSV } from '../api'
+import { toast, dismiss } from '../notifications'
 
 interface Props { onClose: () => void }
 
@@ -11,14 +12,21 @@ export default function SyncModal({ onClose }: Props) {
 
   const setResult = (key: string, msg: string) => setResults(p => ({ ...p, [key]: msg }))
 
-  const doSync = async (key: string, fn: () => Promise<unknown>) => {
+  const doSync = async (key: string, label: string, fn: () => Promise<unknown>) => {
     setBusy(key)
+    const tid = toast(`Syncing ${label}…`, 'info', true)
     try {
       const r = await fn() as Record<string, number>
       const parts = Object.entries(r).filter(([, v]) => typeof v === 'number').map(([k, v]) => `${k}: +${v}`).join(', ')
-      setResult(key, `✓ ${parts || 'done'}`)
+      const msg = parts || 'done'
+      setResult(key, `✓ ${msg}`)
+      dismiss(tid)
+      toast(`${label} synced — ${msg}`, 'success')
     } catch (e: unknown) {
-      setResult(key, `✗ ${e instanceof Error ? e.message : 'Error'}`)
+      const err = e instanceof Error ? e.message : 'Error'
+      setResult(key, `✗ ${err}`)
+      dismiss(tid)
+      toast(`${label} sync failed: ${err}`, 'error')
     } finally {
       setBusy(null)
     }
@@ -26,11 +34,18 @@ export default function SyncModal({ onClose }: Props) {
 
   const doImport = async (category: Category, file: File) => {
     setBusy(category)
+    const label = `${CATEGORY_ICONS[category]} ${CATEGORY_LABELS[category]}`
+    const tid = toast(`Importing ${label} CSV…`, 'info', true)
     try {
       const r = await importCSV(category, file) as { imported: number }
       setResult(category, `✓ Imported ${r.imported} items`)
+      dismiss(tid)
+      toast(`${label}: imported ${r.imported} items`, 'success')
     } catch (e: unknown) {
-      setResult(category, `✗ ${e instanceof Error ? e.message : 'Error'}`)
+      const err = e instanceof Error ? e.message : 'Error'
+      setResult(category, `✗ ${err}`)
+      dismiss(tid)
+      toast(`${label} import failed: ${err}`, 'error')
     } finally {
       setBusy(null)
       const ref = fileRefs.current[category]
@@ -49,7 +64,7 @@ export default function SyncModal({ onClose }: Props) {
           <div className="sync-section">
             <h3>⛩️ AniList — Anime + Manga</h3>
             <div className="sync-row">
-              <button className="btn-primary" disabled={busy !== null} onClick={() => doSync('anilist', syncAniList)}>
+              <button className="btn-primary" disabled={busy !== null} onClick={() => doSync('anilist', 'AniList', syncAniList)}>
                 {busy === 'anilist' ? '…' : '⟳ Sync'}
               </button>
               {results.anilist && (
@@ -63,7 +78,7 @@ export default function SyncModal({ onClose }: Props) {
           <div className="sync-section">
             <h3>🎬 Simkl — Movies + Series + Anime</h3>
             <div className="sync-row">
-              <button className="btn-primary" disabled={busy !== null} onClick={() => doSync('simkl', syncSimkl)}>
+              <button className="btn-primary" disabled={busy !== null} onClick={() => doSync('simkl', 'Simkl', syncSimkl)}>
                 {busy === 'simkl' ? '…' : '⟳ Sync'}
               </button>
               {results.simkl && (
@@ -80,7 +95,7 @@ export default function SyncModal({ onClose }: Props) {
               Uses Jikan (public API). Set your MAL username in Settings. Profile must be public.
             </p>
             <div className="sync-row">
-              <button className="btn-primary" disabled={busy !== null} onClick={() => doSync('mal', syncMAL)}>
+              <button className="btn-primary" disabled={busy !== null} onClick={() => doSync('mal', 'MyAnimeList', syncMAL)}>
                 {busy === 'mal' ? '…' : '⟳ Sync'}
               </button>
               {results.mal && (
