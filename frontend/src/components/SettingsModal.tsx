@@ -13,8 +13,9 @@ const DEFAULT_SETTINGS: Settings = {
   anilist_username: '', mal_username: '',
   anilist_states: ['PLANNING'], simkl_states: ['plantowatch'],
   mal_anime_states: ['plantowatch'], mal_manga_states: ['plantoread'],
-  queue_modes: { movies: false, series: false, anime: false, manga: false, games: false, comics: false },
+  queue_modes: { movies: false, series: false, anime: false, manga: false, games: false, comics: false, albums: false },
   igdb_client_id: '', igdb_client_set: false,
+  aoty_api_set: false,
 }
 
 export default function SettingsModal({ onClose }: Props) {
@@ -23,6 +24,7 @@ export default function SettingsModal({ onClose }: Props) {
   const [clientId, setClientId] = useState('')
   const [igdbClientId, setIgdbClientId] = useState('')
   const [igdbClientSecret, setIgdbClientSecret] = useState('')
+  const [aotyApiKey, setAotyApiKey] = useState('')
   const [aniUser, setAniUser] = useState('')
   const [malUser, setMalUser] = useState('')
   const [aniStates, setAniStates] = useState<string[]>(['PLANNING'])
@@ -40,6 +42,7 @@ export default function SettingsModal({ onClose }: Props) {
       setS(data)
       setClientId(data.simkl_client_id)
       setIgdbClientId(data.igdb_client_id ?? '')
+      // aoty_api_key is write-only — never returned to frontend
       setAniUser(data.anilist_username)
       setMalUser(data.mal_username)
       setAniStates(data.anilist_states ?? ['PLANNING'])
@@ -67,6 +70,7 @@ export default function SettingsModal({ onClose }: Props) {
         queue_modes: queueModes,
         igdb_client_id: igdbClientId,
         ...(igdbClientSecret && { igdb_client_secret: igdbClientSecret }),
+        ...(aotyApiKey && { aoty_api_key: aotyApiKey }),
       })
       setMsg('Saved')
       setS(prev => ({ ...prev, queue_modes: queueModes as Settings['queue_modes'] }))
@@ -176,6 +180,28 @@ export default function SettingsModal({ onClose }: Props) {
                 )}
                 <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>
                   Get your Client ID at <strong>simkl.com/apps</strong> → New App (free).
+                </p>
+              </div>
+
+              <div className="sync-section">
+                <h3>🎵 Album of the Year (Albums metadata + covers)</h3>
+                <div className="form-group">
+                  <label>API Key</label>
+                  <input
+                    type="password"
+                    value={aotyApiKey}
+                    onChange={e => setAotyApiKey(e.target.value)}
+                    placeholder={s.aoty_api_set ? '••••••••• (saved)' : 'paste API key here'}
+                  />
+                </div>
+                <div className="sync-row">
+                  <span className={`sync-status${s.aoty_api_set ? ' ok' : ''}`}>
+                    {s.aoty_api_set ? '✓ Key saved' : '✗ Not configured'}
+                  </span>
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>
+                  Get a free API key at <strong>albumoftheyear.org/api/</strong>.
+                  Hit <strong>Save</strong> then <strong>🎵 Covers</strong> to fetch album art.
                 </p>
               </div>
 

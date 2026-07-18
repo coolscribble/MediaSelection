@@ -11,6 +11,9 @@ function extractTitle(r) {
     // Comics exports use "Full Title" (individual issue) or "Series Name" as fallback
     r['Full Title'] || r['full title'] ||
     r['Series Name'] || r['series name'] ||
+    // Album exports typically use "Album", "Release title" (RateYourMusic), or generic "Title"
+    r['Album'] || r['album'] ||
+    r['Release title'] || r['release title'] ||
     r['Title'] || r['title'] ||
     r['Name'] || r['name'] ||
     r['Series'] || r['series'] ||
@@ -21,7 +24,7 @@ function extractTitle(r) {
 }
 
 function extractExternalId(r) {
-  return r['IGDB ID'] || r['igdb_id'] || r['id'] || r['ID'] || r['external_id'] || null;
+  return r['IGDB ID'] || r['igdb_id'] || r['AOTY ID'] || r['aoty_id'] || r['id'] || r['ID'] || r['external_id'] || null;
 }
 
 function extractThumbnail(r) {
@@ -45,6 +48,11 @@ function buildMetadata(r) {
   if (r['Marked Read']) meta.markedRead = r['Marked Read'];
   const issue = r['Issue #'] || r['Issue Number'] || r['issue'];
   if (issue) meta.issue = issue;
+  // Albums — artist name and release year
+  const artist = r['Artist'] || r['artist'] || r['Artist Name'] || r['artist name'];
+  if (artist) meta.artist = artist;
+  const year = r['Year'] || r['year'] || r['Release year'] || r['release year'] || r['Date'] || r['date'];
+  if (year) meta.year = year;
   return meta;
 }
 

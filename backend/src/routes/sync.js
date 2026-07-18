@@ -5,6 +5,7 @@ const { getPin, pollPin, syncSimkl } = require('../services/simkl');
 const { syncAniList, updateOngoingAiringInfo } = require('../services/anilist');
 const { syncMAL } = require('../services/mal');
 const { syncIGDB } = require('../services/igdb');
+const { syncAOTY } = require('../services/aoty');
 
 router.get('/simkl/pin', async (req, res) => {
   try {
@@ -42,6 +43,12 @@ router.post('/mal', async (req, res) => {
 // Fetch IGDB covers only (faster than full update-metadata)
 router.post('/igdb', async (req, res) => {
   try { res.json(await syncIGDB()) }
+  catch (e) { res.status(500).json({ error: e.message }) }
+});
+
+// Fetch Album of the Year covers only
+router.post('/aoty', async (req, res) => {
+  try { res.json(await syncAOTY()) }
   catch (e) { res.status(500).json({ error: e.message }) }
 });
 

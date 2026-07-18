@@ -1,10 +1,10 @@
-export type Category = 'movies' | 'series' | 'anime' | 'manga' | 'games' | 'comics'
-export const CATEGORIES: Category[] = ['movies', 'series', 'anime', 'manga', 'games', 'comics']
+export type Category = 'movies' | 'series' | 'anime' | 'manga' | 'games' | 'comics' | 'albums'
+export const CATEGORIES: Category[] = ['movies', 'series', 'anime', 'manga', 'games', 'comics', 'albums']
 export const CATEGORY_LABELS: Record<Category, string> = {
-  movies: 'Movies', series: 'Series', anime: 'Anime', manga: 'Manga', games: 'Games', comics: 'Comics',
+  movies: 'Movies', series: 'Series', anime: 'Anime', manga: 'Manga', games: 'Games', comics: 'Comics', albums: 'Albums',
 }
 export const CATEGORY_ICONS: Record<Category, string> = {
-  movies: '🎬', series: '📺', anime: '⛩️', manga: '📚', games: '🎮', comics: '💬',
+  movies: '🎬', series: '📺', anime: '⛩️', manga: '📚', games: '🎮', comics: '💬', albums: '🎵',
 }
 
 export interface LibraryItem {
@@ -92,6 +92,7 @@ export interface Settings {
   queue_modes: Record<Category, boolean>
   igdb_client_id: string
   igdb_client_set: boolean
+  aoty_api_set: boolean
 }
 
 export const ANILIST_STATE_OPTIONS = [

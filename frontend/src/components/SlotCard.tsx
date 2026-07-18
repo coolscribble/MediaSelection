@@ -61,8 +61,8 @@ export default function SlotCard({ slot, queueMode, onRefresh }: Props) {
         }
         {!isEmpty && (
           <>
-            {/* Progress only for categories that track episodes/chapters — not movies or games */}
-            {slot.category !== 'movies' && slot.category !== 'games' && (
+            {/* Progress only for categories that track episodes/chapters — not movies, games, or albums */}
+            {slot.category !== 'movies' && slot.category !== 'games' && slot.category !== 'albums' && (
             <div className="slot-progress">
               <input
                 className="slot-progress-input"

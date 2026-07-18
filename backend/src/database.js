@@ -88,7 +88,7 @@ async function init() {
   try { await db.run('ALTER TABLE ongoing_items ADD COLUMN airing_info TEXT') } catch {}
   try { await db.run('ALTER TABLE completion_stats ADD COLUMN total_progress INTEGER DEFAULT 0') } catch {}
 
-  const CATS = ['movies', 'series', 'anime', 'manga', 'games', 'comics'];
+  const CATS = ['movies', 'series', 'anime', 'manga', 'games', 'comics', 'albums'];
   for (const cat of CATS) {
     for (let i = 1; i <= 3; i++) {
       await db.run('INSERT OR IGNORE INTO slots (category, slot_index) VALUES (?, ?)', [cat, i]);
