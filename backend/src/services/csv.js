@@ -7,7 +7,8 @@ const SKIP_METADATA_COLS = new Set(['Progress notes', 'progress notes', 'notes',
 
 function extractTitle(r) {
   return (
-    r['Game name'] || r['game name'] ||
+    // InfiniteBacklog: "Game name" (lowercase n) or "Game Name" (capital N)
+    r['Game name'] || r['Game Name'] || r['game name'] || r['GAME NAME'] ||
     // Comics exports use "Full Title" (individual issue) or "Series Name" as fallback
     r['Full Title'] || r['full title'] ||
     r['Series Name'] || r['series name'] ||
@@ -94,6 +95,10 @@ function normalizeComicsTitle(t) {
   return t.replace(/\s*#\d+\b.*$/, '').trim();
 }
 
+// Game statuses — shared between importCSV and importQueueCSV
+const GAME_INCLUDE = new Set(['unfinished', 'playing', 'currently playing', 'in progress', 'started', 'owned']);
+const GAME_SKIP    = new Set(['completed', 'beaten', 'mastered', 'abandoned']);
+
 async function importCSV(buffer, category, options = {}) {
   const records = await parseCSV(buffer);
   let count = 0;
@@ -106,15 +111,21 @@ async function importCSV(buffer, category, options = {}) {
     : null;
 
   for (const r of records) {
-    // Skip games that are already completed or beaten — they belong in history, not the backlog.
-    // InfiniteBacklog exports both a "Status" column (Playing/Completed/Dropped/…) and a
-    // "Completion" column (Unfinished/Beaten/Completed/…). We filter on Completion but always
-    // allow rows where Status says the user is actively playing (covers replays of beaten games).
+    // InfiniteBacklog exports a "Status" column (Playing/Completed/…) and a separate
+    // "Completion" column (Unfinished/Beaten/…). Import anything that is explicitly
+    // in-progress; skip only what is explicitly finished.
     if (category === 'games') {
       const completion = (r['Completion'] || r['completion'] || '').trim().toLowerCase();
-      const status = (r['Status'] || r['status'] || '').trim().toLowerCase();
-      const isPlaying = status === 'playing' || status === 'currently playing' || status === 'in progress';
-      if (!isPlaying && (completion === 'completed' || completion === 'beaten')) continue;
+      const status     = (r['Status']     || r['status']     || '').trim().toLowerCase();
+
+      const explicitInclude = GAME_INCLUDE.has(completion) || GAME_INCLUDE.has(status);
+      const explicitSkip    = GAME_SKIP.has(completion) && !GAME_INCLUDE.has(status);
+
+      if (explicitSkip && !explicitInclude) {
+        console.log(`[csv] skip game (done): "${r['Game name'] || r['Game Name'] || r['title']}" completion="${completion}" status="${status}"`);
+        continue;
+      }
+
       // Apply platform filter when the user selected specific platforms in the import UI
       if (platformFilter) {
         const platform = (r['Platform'] || r['platform'] || '').trim().toLowerCase();
@@ -147,14 +158,21 @@ async function importCSV(buffer, category, options = {}) {
       if (dbDup) continue;
     } else {
       title = extractTitle(r);
-      if (!title) continue;
+      if (!title) {
+        console.log(`[csv] skip record (no title): keys=${Object.keys(r).slice(0, 5).join(',')}`);
+        continue;
+      }
     }
 
-    await db.run(
-      'INSERT INTO library_items (category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?)',
-      [category, title.trim(), extractExternalId(r) || null, extractThumbnail(r) || null, JSON.stringify(buildMetadata(r)), 'csv']
-    );
-    count++;
+    try {
+      await db.run(
+        'INSERT INTO library_items (category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?)',
+        [category, title.trim(), extractExternalId(r) || null, extractThumbnail(r) || null, JSON.stringify(buildMetadata(r)), 'csv']
+      );
+      count++;
+    } catch (e) {
+      console.warn(`[csv] DB error inserting "${title}": ${e.message}`);
+    }
   }
   return count;
 }
@@ -169,9 +187,10 @@ async function importQueueCSV(buffer, category) {
   for (const r of records) {
     if (category === 'games') {
       const completion = (r['Completion'] || r['completion'] || '').trim().toLowerCase();
-      const status = (r['Status'] || r['status'] || '').trim().toLowerCase();
-      const isPlaying = status === 'playing' || status === 'currently playing' || status === 'in progress';
-      if (!isPlaying && (completion === 'completed' || completion === 'beaten')) continue;
+      const status     = (r['Status']     || r['status']     || '').trim().toLowerCase();
+      const explicitInclude = GAME_INCLUDE.has(completion) || GAME_INCLUDE.has(status);
+      const explicitSkip    = GAME_SKIP.has(completion) && !GAME_INCLUDE.has(status);
+      if (explicitSkip && !explicitInclude) continue;
     }
 
     let title;
