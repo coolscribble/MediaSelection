@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { db } = require('../database');
 
-const CATEGORIES = ['movies', 'series', 'anime', 'manga', 'games', 'comics'];
+const CATEGORIES = ['movies', 'series', 'anime', 'manga', 'games', 'comics', 'albums'];
 
 async function isQueueMode(category) {
   const row = await db.get('SELECT value FROM settings WHERE key = ?', [`queue_mode_${category}`]);
