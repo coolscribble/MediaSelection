@@ -1,6 +1,7 @@
 const express = require('express')
 const router = express.Router()
 const { db } = require('../database')
+const { simklQS, simklHeaders } = require('../services/simkl')
 
 const ANILIST_API = 'https://graphql.anilist.co'
 const ANILIST_QUERY = `
@@ -99,18 +100,30 @@ router.post('/sync/anilist', async (req, res) => {
 // POST /sync/simkl — sync watching shows from Simkl
 router.post('/sync/simkl', async (req, res) => {
   try {
-    const [cidRow, tokenRow] = await Promise.all([
+    const [cidRow, tokenRow, lastActRow] = await Promise.all([
       db.get('SELECT value FROM settings WHERE key = ?', ['simkl_client_id']),
       db.get('SELECT value FROM settings WHERE key = ?', ['simkl_access_token']),
+      db.get('SELECT value FROM settings WHERE key = ?', ['simkl_ongoing_last_activities']),
     ])
     if (!cidRow?.value || !tokenRow?.value) return res.status(400).json({ error: 'Simkl not configured' })
 
-    const headers = {
-      Authorization: `Bearer ${tokenRow.value}`,
-      'simkl-api-key': cidRow.value,
-      'Content-Type': 'application/json',
+    const cid = cidRow.value
+    const headers = simklHeaders(tokenRow.value, cid)
+    const savedAll = lastActRow?.value ? JSON.parse(lastActRow.value).all : null
+
+    // Phase 1: check activities — skip the heavy fetch if nothing has changed
+    const actRes = await fetch(`https://api.simkl.com/sync/activities?${simklQS(cid)}`, { headers })
+    if (!actRes.ok) throw new Error(`Simkl activities error: ${actRes.status}`)
+    const activities = await actRes.json()
+    const currentAll = activities.all
+
+    if (savedAll && savedAll === currentAll) {
+      return res.json({ series: 0, skipped: true })
     }
-    const r = await fetch('https://api.simkl.com/sync/all-items/watching/shows', { headers })
+
+    // Phase 2: fetch watching shows; use date_from on subsequent syncs for delta only
+    const qs = simklQS(cid, savedAll ? { date_from: savedAll } : {})
+    const r = await fetch(`https://api.simkl.com/sync/all-items/watching/shows?${qs}`, { headers })
     if (r.status === 404) return res.json({ series: 0 })
     if (!r.ok) throw new Error(`Simkl API error: ${r.status}`)
     const data = await r.json()
@@ -122,24 +135,22 @@ router.post('/sync/simkl', async (req, res) => {
       const extId = show.ids?.simkl ? String(show.ids.simkl) : null
       const thumb = show.poster ? `https://simkl.in/posters/${show.poster}_m.webp` : null
 
-      // Fetch the show's real airing status from Simkl show details endpoint.
-      // The all-items response doesn't include status, so we need a separate call.
+      // Fetch per-show airing status — all-items doesn't include it
       let showStatus = null
       if (extId) {
         try {
           const detailRes = await fetch(
-            `https://api.simkl.com/tv/${extId}?extended=full&client_id=${cidRow.value}`
+            `https://api.simkl.com/tv/${extId}?${simklQS(cid, { extended: 'full' })}`,
+            { headers }
           )
           if (detailRes.ok) {
             const detail = await detailRes.json()
             showStatus = (detail.status || '').toLowerCase()
           }
         } catch { /* keep showStatus null — include by default */ }
-        // Small delay to stay within Simkl rate limits
-        await new Promise(r => setTimeout(r, 300))
+        await new Promise(resolve => setTimeout(resolve, 300))
       }
 
-      // Skip shows that have definitely ended
       if (showStatus === 'ended' || showStatus === 'canceled' || showStatus === 'cancelled') continue
 
       const meta = JSON.stringify({ year: show.year, status: showStatus || null })
@@ -149,7 +160,6 @@ router.post('/sync/simkl', async (req, res) => {
           ['series_ongoing', extId]
         )
         if (existing) {
-          // Update status so shows that ended since last sync get removed next time
           await db.run('UPDATE ongoing_items SET metadata = ? WHERE id = ?', [meta, existing.id])
           continue
         }
@@ -160,6 +170,12 @@ router.post('/sync/simkl', async (req, res) => {
       )
       count++
     }
+
+    // Persist the current activities timestamp for future delta syncs
+    await db.run(
+      'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+      ['simkl_ongoing_last_activities', JSON.stringify({ all: currentAll })]
+    )
 
     res.json({ series: count })
   } catch (e) { res.status(500).json({ error: e.message }) }

@@ -1,40 +1,77 @@
 const { db } = require('../database');
 
 const BASE = 'https://api.simkl.com';
+const APP_NAME = 'mediapicker';
+const APP_VERSION = '1.9.3';
+
+// Build query string with the required Simkl identification params on every request
+function simklQS(clientId, extra = {}) {
+  return new URLSearchParams({
+    client_id: clientId,
+    'app-name': APP_NAME,
+    'app-version': APP_VERSION,
+    ...extra,
+  }).toString();
+}
+
+// Build auth headers with User-Agent (required for API Analytics)
+function simklHeaders(token, clientId) {
+  return {
+    Authorization: `Bearer ${token}`,
+    'simkl-api-key': clientId,
+    'Content-Type': 'application/json',
+    'User-Agent': `${APP_NAME}/${APP_VERSION}`,
+  };
+}
 
 async function getPin(clientId) {
-  const res = await fetch(`${BASE}/oauth/pin?client_id=${clientId}`);
+  const res = await fetch(`${BASE}/oauth/pin?${simklQS(clientId)}`);
   if (!res.ok) throw new Error(`Simkl PIN error: ${res.status}`);
   return res.json();
 }
 
 async function pollPin(clientId, userCode) {
-  const res = await fetch(`${BASE}/oauth/pin/${userCode}?client_id=${clientId}`);
+  const res = await fetch(`${BASE}/oauth/pin/${userCode}?${simklQS(clientId)}`);
   if (!res.ok) return null;
   const data = await res.json();
   return (data.result === 'KO' || !data.access_token) ? null : data.access_token;
 }
 
 async function syncSimkl() {
-  const [cidRow, tokenRow, statesRow] = await Promise.all([
+  const [cidRow, tokenRow, statesRow, lastActRow] = await Promise.all([
     db.get('SELECT value FROM settings WHERE key = ?', ['simkl_client_id']),
     db.get('SELECT value FROM settings WHERE key = ?', ['simkl_access_token']),
     db.get('SELECT value FROM settings WHERE key = ?', ['simkl_states']),
+    db.get('SELECT value FROM settings WHERE key = ?', ['simkl_last_activities']),
   ]);
   if (!cidRow?.value || !tokenRow?.value) throw new Error('Simkl is not configured (missing Client ID or token)');
 
+  const cid = cidRow.value;
+  const token = tokenRow.value;
+  const headers = simklHeaders(token, cid);
   const states = statesRow?.value ? JSON.parse(statesRow.value) : ['plantowatch'];
-  const headers = {
-    Authorization: `Bearer ${tokenRow.value}`,
-    'simkl-api-key': cidRow.value,
-    'Content-Type': 'application/json',
-  };
+  const savedActivities = lastActRow?.value ? JSON.parse(lastActRow.value) : null;
 
+  // Phase 1: check whether anything actually changed since the last sync.
+  // If the activities.all timestamp is unchanged we can skip the heavy item fetches entirely.
+  const actRes = await fetch(`${BASE}/sync/activities?${simklQS(cid)}`, { headers });
+  if (!actRes.ok) throw new Error(`Simkl activities error: ${actRes.status}`);
+  const activities = await actRes.json();
+  const currentAll = activities.all;
+
+  if (savedActivities?.all && savedActivities.all === currentAll) {
+    return { movies: 0, series: 0, anime: 0, skipped: true };
+  }
+
+  // Phase 2: fetch library items. Pass date_from on subsequent syncs so only
+  // changed items are returned (full pull on first run when there is no saved timestamp).
+  const dateFrom = savedActivities?.all || null;
   const counts = { movies: 0, series: 0, anime: 0 };
 
   for (const status of states) {
     for (const [type, category] of [['movies', 'movies'], ['shows', 'series'], ['anime', 'anime']]) {
-      const res = await fetch(`${BASE}/sync/all-items/${status}/${type}`, { headers });
+      const qs = simklQS(cid, dateFrom ? { date_from: dateFrom } : {});
+      const res = await fetch(`${BASE}/sync/all-items/${status}/${type}?${qs}`, { headers });
       if (res.status === 404) continue;
       if (!res.ok) throw new Error(`Simkl API error (${status}/${type}): ${res.status}`);
       const data = await res.json();
@@ -70,7 +107,13 @@ async function syncSimkl() {
     }
   }
 
+  // Save the current activities timestamp so the next sync can do a delta fetch
+  await db.run(
+    'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
+    ['simkl_last_activities', JSON.stringify({ all: currentAll })]
+  );
+
   return counts;
 }
 
-module.exports = { getPin, pollPin, syncSimkl };
+module.exports = { getPin, pollPin, syncSimkl, simklQS, simklHeaders };
