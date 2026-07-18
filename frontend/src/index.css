@@ -440,6 +440,10 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   border-radius: 20px;
   padding: 2px 10px;
 }
+.stats-progress {
+  color: var(--text2);
+  font-size: 11px;
+}
 
 /* --- Slot progress --- */
 .slot-progress {

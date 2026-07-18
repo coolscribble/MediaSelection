@@ -118,21 +118,27 @@ router.post('/sync/simkl', async (req, res) => {
     for (const entry of (data.shows || [])) {
       const show = entry.show
       if (!show) continue
-      // Skip shows that have finished airing — only keep actively releasing or unknown-status shows
+      // Skip shows that have definitively ended — only keep airing or unknown-status shows
       const status = (show.status || '').toLowerCase()
       if (status === 'ended' || status === 'canceled' || status === 'cancelled') continue
       const extId = show.ids?.simkl ? String(show.ids.simkl) : null
+      const thumb = show.poster ? `https://simkl.in/posters/${show.poster}_m.webp` : null
+      // Store status in metadata so the frontend can filter without extra API calls
+      const meta = JSON.stringify({ year: show.year, status: show.status || null })
       if (extId) {
         const existing = await db.get(
           'SELECT id FROM ongoing_items WHERE category = ? AND external_id = ?',
           ['series_ongoing', extId]
         )
-        if (existing) continue
+        if (existing) {
+          // Update status on re-sync so ended shows can be caught next time
+          await db.run('UPDATE ongoing_items SET metadata = ? WHERE id = ?', [meta, existing.id])
+          continue
+        }
       }
-      const thumb = show.poster ? `https://simkl.in/posters/${show.poster}_m.webp` : null
       await db.run(
         'INSERT INTO ongoing_items (category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?)',
-        ['series_ongoing', show.title, extId, thumb, JSON.stringify({ year: show.year }), 'simkl']
+        ['series_ongoing', show.title, extId, thumb, meta, 'simkl']
       )
       count++
     }

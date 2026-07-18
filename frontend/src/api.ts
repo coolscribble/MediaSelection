@@ -35,6 +35,7 @@ export const syncAniList = () => call('/api/sync/anilist', { method: 'POST' })
 export const syncSimkl  = () => call('/api/sync/simkl',  { method: 'POST' })
 export const syncMAL    = () => call('/api/sync/mal',    { method: 'POST' })
 export const updateMetadata = () => call('/api/sync/update-metadata', { method: 'POST' })
+export const fetchIGDBCovers = () => call('/api/sync/igdb', { method: 'POST' })
 export const getSimklPin    = () => call('/api/sync/simkl/pin')
 export const pollSimklPin   = (uc: string) => call(`/api/sync/simkl/pin/${uc}`)
 

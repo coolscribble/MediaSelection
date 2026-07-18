@@ -86,6 +86,7 @@ async function init() {
   try { await db.run('ALTER TABLE slots ADD COLUMN note TEXT') } catch {}
   try { await db.run('ALTER TABLE slots ADD COLUMN current_progress INTEGER DEFAULT 0') } catch {}
   try { await db.run('ALTER TABLE ongoing_items ADD COLUMN airing_info TEXT') } catch {}
+  try { await db.run('ALTER TABLE completion_stats ADD COLUMN total_progress INTEGER DEFAULT 0') } catch {}
 
   const CATS = ['movies', 'series', 'anime', 'manga', 'games', 'comics'];
   for (const cat of CATS) {

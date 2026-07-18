@@ -31,10 +31,11 @@ async function consumeNextQueueItem(category) {
   return { libId: r.lastInsertRowid, title: item.title };
 }
 
-async function incrementStat(category) {
+async function incrementStat(category, progress) {
   await db.run(
-    'INSERT INTO completion_stats (category, count) VALUES (?, 1) ON CONFLICT(category) DO UPDATE SET count = count + 1',
-    [category]
+    `INSERT INTO completion_stats (category, count, total_progress) VALUES (?, 1, ?)
+     ON CONFLICT(category) DO UPDATE SET count = count + 1, total_progress = total_progress + ?`,
+    [category, progress || 0, progress || 0]
   );
 }
 
@@ -76,7 +77,7 @@ router.post('/:id/complete', async (req, res) => {
     const slot = await db.get('SELECT * FROM slots WHERE id = ?', [req.params.id]);
     if (!slot) return res.status(404).json({ error: 'Slot not found' });
 
-    if (slot.item_id) await incrementStat(slot.category);
+    if (slot.item_id) await incrementStat(slot.category, slot.current_progress || 0);
 
     await db.run('UPDATE slots SET item_id = NULL, is_locked = 0, note = NULL, current_progress = 0 WHERE id = ?', [req.params.id]);
 

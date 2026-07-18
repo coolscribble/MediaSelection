@@ -81,17 +81,40 @@ function parseCSV(buffer) {
   });
 }
 
+// Strip issue numbers (#1, #12, #001 …) and trim — used for comics dedup
+function normalizeComicsTitle(t) {
+  return t.replace(/\s*#\d+\b.*$/, '').trim();
+}
+
 async function importCSV(buffer, category) {
   const records = await parseCSV(buffer);
   let count = 0;
+  // Used for within-batch deduplication when importing comics
+  const seenTitles = new Set();
+
   for (const r of records) {
-    const title = extractTitle(r);
-    if (!title) continue;
     // Skip games that are already completed or beaten — they belong in history, not the backlog
     if (category === 'games') {
       const completion = (r['Completion'] || '').trim();
       if (completion === 'Completed' || completion === 'Beaten') continue;
     }
+
+    let title;
+    if (category === 'comics') {
+      // Prefer Series Name (already de-issued) over Full Title; strip any remaining #N
+      const raw = r['Series Name'] || r['series name'] || extractTitle(r);
+      if (!raw) continue;
+      title = normalizeComicsTitle(raw);
+      if (!title) continue;
+      // Skip duplicates — every issue in a series maps to the same series title
+      const key = title.toLowerCase();
+      if (seenTitles.has(key)) continue;
+      seenTitles.add(key);
+    } else {
+      title = extractTitle(r);
+      if (!title) continue;
+    }
+
     await db.run(
       'INSERT INTO library_items (category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?)',
       [category, title.trim(), extractExternalId(r) || null, extractThumbnail(r) || null, JSON.stringify(buildMetadata(r)), 'csv']
@@ -106,14 +129,28 @@ async function importQueueCSV(buffer, category) {
   const maxRow = await db.get('SELECT MAX(position) as m FROM queue_items WHERE category = ?', [category]);
   let pos = (maxRow?.m ?? -1) + 1;
   let count = 0;
+  const seenTitles = new Set();
+
   for (const r of records) {
-    const title = extractTitle(r);
-    if (!title) continue;
-    // Same completion filter as library import — skip finished games
     if (category === 'games') {
       const completion = (r['Completion'] || '').trim();
       if (completion === 'Completed' || completion === 'Beaten') continue;
     }
+
+    let title;
+    if (category === 'comics') {
+      const raw = r['Series Name'] || r['series name'] || extractTitle(r);
+      if (!raw) continue;
+      title = normalizeComicsTitle(raw);
+      if (!title) continue;
+      const key = title.toLowerCase();
+      if (seenTitles.has(key)) continue;
+      seenTitles.add(key);
+    } else {
+      title = extractTitle(r);
+      if (!title) continue;
+    }
+
     await db.run(
       'INSERT INTO queue_items (category, position, title, external_id, thumbnail_url, metadata) VALUES (?, ?, ?, ?, ?, ?)',
       [category, pos++, title.trim(), extractExternalId(r) || null, extractThumbnail(r) || null, JSON.stringify(buildMetadata(r))]

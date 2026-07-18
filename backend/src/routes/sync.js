@@ -39,6 +39,12 @@ router.post('/mal', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Fetch IGDB covers only (faster than full update-metadata)
+router.post('/igdb', async (req, res) => {
+  try { res.json(await syncIGDB()) }
+  catch (e) { res.status(500).json({ error: e.message }) }
+});
+
 // Refresh metadata (episode counts, airing info, IGDB covers) for all existing items
 router.post('/update-metadata', async (req, res) => {
   const result = {};

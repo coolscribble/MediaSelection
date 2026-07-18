@@ -56,10 +56,13 @@ async function syncIGDB() {
     const result = await searchIGDB(game.title, clientId, token);
     if (!result) { skipped++; continue; }
 
-    // Build cover URL — replace thumbnail size with cover_big for higher quality
+    // Build cover URL — cover_big size, WebP format for smaller file size
     const rawUrl = result.cover?.url || null;
     const thumb = rawUrl
-      ? rawUrl.replace('t_thumb', 't_cover_big').replace(/^\/\//, 'https://')
+      ? rawUrl
+          .replace('t_thumb', 't_cover_big')
+          .replace(/^\/\//, 'https://')
+          .replace(/\.jpg$/, '.webp')
       : null;
 
     // Merge new IGDB fields into existing metadata so CSV fields are preserved

@@ -24,11 +24,14 @@ function formatAiring(ai: AiringInfo): string {
 }
 
 // An item is still releasing if:
-//   - no airing_info (manually added — assume active)
-//   - OR total_episodes is unknown (ongoing)
-//   - OR next episode is still upcoming
-//   - OR episodes_aired < total_episodes (not done yet)
+//   - metadata.status is explicitly "ended"/"canceled" → hide it
+//   - no airing_info and status is unknown → assume active (manually added)
+//   - total_episodes is unknown (ongoing) → show
+//   - next episode is still upcoming → show
+//   - episodes_aired < total_episodes → show
 function isStillReleasing(item: OngoingItem): boolean {
+  const status = ((item.metadata?.status as string) || '').toLowerCase()
+  if (status === 'ended' || status === 'canceled' || status === 'cancelled') return false
   const ai = item.airing_info
   if (!ai) return true
   if (ai.total_episodes === null) return true
