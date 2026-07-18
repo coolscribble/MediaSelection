@@ -21,6 +21,19 @@ router.post('/:category', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+router.delete('/clear/:category', async (req, res) => {
+  try {
+    // Unassign any slots that held items from this category before deleting
+    await db.run(
+      `UPDATE slots SET item_id = NULL, is_locked = 0
+       WHERE item_id IN (SELECT id FROM library_items WHERE category = ?)`,
+      [req.params.category]
+    );
+    await db.run('DELETE FROM library_items WHERE category = ?', [req.params.category]);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 router.delete('/:id', async (req, res) => {
   try {
     await db.run('UPDATE slots SET item_id = NULL, is_locked = 0 WHERE item_id = ?', [req.params.id]);

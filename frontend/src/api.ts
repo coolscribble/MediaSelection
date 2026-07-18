@@ -24,6 +24,7 @@ export const getLibrary = (category: string) => call(`/api/library/${category}`)
 export const addLibraryItem = (category: string, data: { title: string; thumbnail_url?: string }) =>
   call(`/api/library/${category}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
 export const deleteLibraryItem = (id: number) => call(`/api/library/${id}`, { method: 'DELETE' })
+export const clearLibrary = (category: string) => call(`/api/library/clear/${category}`, { method: 'DELETE' })
 
 export const getSettings = () => call('/api/settings')
 export const saveSettings = (data: Record<string, unknown>) =>
