@@ -129,7 +129,7 @@ router.post('/sync/simkl', async (req, res) => {
         )
         if (existing) continue
       }
-      const thumb = show.poster ? `https://simkl.in/posters/${show.poster}_m.jpg` : null
+      const thumb = show.poster ? `https://simkl.in/posters/${show.poster}_m.webp` : null
       await db.run(
         'INSERT INTO ongoing_items (category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?)',
         ['series_ongoing', show.title, extId, thumb, JSON.stringify({ year: show.year }), 'simkl']
