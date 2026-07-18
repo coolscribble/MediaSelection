@@ -11,35 +11,46 @@ MediaPicker is a self-hosted backlog manager and randomizer for people who can n
 ## Features
 
 ### 🎰 Slot randomizer
-Each category has three slots filled randomly from your library. Lock a slot to keep its item while rerolling the others. Mark a slot done to move the item to your finished counter and immediately draw the next one.
+Each category has three slots filled randomly from your library. Per slot you can:
+- **🔒 Lock** — keep the current item while rerolling the others
+- **🎲 Reroll** — swap it for something else from the library
+- **🔍 Pick manually** — search and assign a specific item from your library
+- **✓ Mark done** — sends the item to the finish counter and immediately draws the next one
+- **Progress tracking** — anime, manga, series, and comics slots have an episode/chapter counter you can increment or type into directly
+- **Notes** — a text field per slot for reminders or thoughts
 
 ### 📚 Seven categories
-Movies · Series · Anime · Manga · Games · Comics · Albums — each with its own library, queue, slots, and finish counter.
+Movies · Series · Anime · Manga · Games · Comics · Albums — each with its own library, slots, queue, and finish counter.
 
 ### 📋 Queue mode
-Enable queue mode per category and the slots pull items in order from a hand-curated list instead of randomly. Import a whole queue via CSV or build it manually.
+Enable queue mode per category and the slots pull items in order from a hand-curated list instead of randomly. Build the queue manually or import it via CSV. Toggle per category in **Settings → Queue Mode**.
 
 ### 📺 Currently Releasing
-A live section showing everything you are actively watching that is still airing. Syncs automatically from AniList (anime/manga) and Simkl (TV shows). Only shows content that is actually still releasing — ended and cancelled shows are filtered out. Each tile shows:
-- Episodes/chapters aired (from the API)
-- A **👁 watched** counter you can type into directly
+A live section showing everything you are actively following that is still airing. Syncs from AniList (anime/manga) and Simkl (TV shows). Only shows content that is actually still releasing — ended and cancelled shows are filtered out automatically on sync. Each tile shows:
+- Episodes/chapters aired (from the API, where available)
+- A **👁 watched** counter you can type into directly — no need to tap + repeatedly
 
 ### 🔢 Finish counter
-A stats bar always visible at the top shows how many items you have finished in each category, plus total episodes watched and chapters read.
+A stats bar always visible at the top shows how many items you have finished in each category, plus a running total of episodes watched and chapters read.
 
 ### 🖼️ Cover art
-| Category | Source | API key needed |
+| Category | Source | Needs API key |
 |---|---|---|
-| 🎮 Games | IGDB (via Twitch) | Yes — free at dev.twitch.tv |
+| 🎮 Games | IGDB via Twitch | Yes — free at dev.twitch.tv |
 | 💬 Comics | ComicVine | Yes — free at comicvine.gamespot.com/api |
 | 🎵 Albums | iTunes Search API | No |
 
+Movies, series, anime, and manga covers come from Simkl / AniList during sync.
+
 ### 📥 CSV import
 Import your entire backlog from exports of tracking sites. The importer handles:
-- **Games**: InfiniteBacklog / Backloggery exports. Skips completed/beaten entries. Platform filter lets you select which platforms to import before the rows hit the database.
-- **Comics**: CLZ / ComicBase exports. Strips issue numbers (`#1`, `#12` …) and deduplicates to one row per series. Skips already-read issues.
-- **Albums**: Any CSV with `Artist`, `Album`, `Year` columns (e.g. RateYourMusic exports).
-- **Everything else**: any CSV with a `Title` or `Name` column.
+- **Games**: InfiniteBacklog / Backloggery exports. Skips `Completed` and `Beaten` rows. After picking the file, platform checkboxes appear so you can select only the platforms you want before the rows are written to the database.
+- **Comics**: CLZ / ComicBase exports. Strips issue numbers (`#1`, `#12` …) and deduplicates to one row per series. Skips already-read issues (`Marked Read = 1`).
+- **Albums**: Any CSV with `Artist`, `Album`, and `Year` columns (e.g. RateYourMusic exports).
+- **Everything else**: any CSV with a `Title` or `Name` column. Optional: `thumbnail`, `Platform`, `Status`.
+
+### 🗑️ Clear library
+Each category header has a **🗑** button. First click turns it red showing **⚠ Sure?** — click again within three seconds to wipe the entire library for that category. Slots are cleared automatically. The button resets on its own if you change your mind.
 
 ### 🔔 Toast notifications
 Bottom-left notifications show what is happening (syncing, importing, fetching covers) and confirm when it finishes or fails.
@@ -62,7 +73,7 @@ Bottom-left notifications show what is happening (syncing, importing, fetching c
 
 ### Prerequisites
 - Docker Desktop
-- A folder for persistent data (the database lives here between container restarts)
+- A folder on your machine for persistent data (the database lives here between restarts)
 
 ### docker-compose.yml
 
@@ -77,7 +88,7 @@ services:
     restart: unless-stopped
 ```
 
-Replace `/your/data/path` with a folder on your machine, then:
+Replace `/your/data/path` with an absolute path to a folder on your machine, then:
 
 ```bash
 docker compose up -d
@@ -106,12 +117,12 @@ No API key required. Enter your AniList username in **Settings → Connections**
 3. Click **Authorize via PIN** and follow the on-screen steps.
 
 ### MyAnimeList (anime + manga)
-No API key required. Enter your MAL username in **Settings → Connections**. Profile must be set to public.
+No API key required. Enter your MAL username in **Settings → Connections**. Profile must be set to public. Uses the Jikan public API.
 
 ### IGDB (game covers)
 1. Register a free app at [dev.twitch.tv/console](https://dev.twitch.tv/console).
 2. Paste the **Client ID** and **Client Secret** in **Settings → Connections → IGDB**.
-3. Click **🎮 Covers** in the header to fetch cover art for all games in your library.
+3. Click **🎮 Covers** in the header to fetch cover art for all games in your library. Uses your CSV's IGDB ID column for exact matching when available, falls back to title search.
 
 ### ComicVine (comic covers)
 1. Get a free API key at [comicvine.gamespot.com/api](https://comicvine.gamespot.com/api/).
@@ -119,7 +130,10 @@ No API key required. Enter your MAL username in **Settings → Connections**. Pr
 3. Click **💬 Covers** to fetch volume cover art.
 
 ### iTunes / Albums
-No configuration needed. Click **🎵 Covers** after importing albums and artwork is fetched automatically from the iTunes Search API.
+No configuration needed. Click **🎵 Covers** after importing albums and artwork is fetched automatically from the iTunes Search API using the artist and album name from your CSV.
+
+### ⟳ Update
+The **⟳ Update** button in the header refreshes episode counts and airing dates from AniList and Simkl for everything in your library, and re-runs IGDB cover sync if credentials are configured.
 
 ---
 
@@ -130,14 +144,14 @@ No configuration needed. Click **🎵 Covers** after importing albums and artwor
 Game name,Platform,Completion,IGDB ID,...
 Hades,PC,Playing,1145360,...
 ```
-Rows with `Completion = Completed` or `Beaten` are skipped automatically. After picking the file, platform checkboxes let you import only specific platforms.
+Rows with `Completion = Completed` or `Beaten` are skipped. After picking the file a platform picker appears — uncheck any platforms you don't want to import.
 
 ### Comics (CLZ / ComicBase)
 ```
 Publisher Name,Series Name,Full Title,Release Date,Marked Read,...
 Marvel,Spider-Man,Spider-Man #1,1990-08-01,0,...
 ```
-`Marked Read = 1` rows are skipped. Series names are deduplicated so each volume appears once.
+`Marked Read = 1` rows are skipped. Issue numbers are stripped and series names deduplicated so each volume appears once regardless of how many issues are in the export.
 
 ### Albums
 ```
@@ -147,15 +161,15 @@ slowthai,UGLY,2023
 ```
 
 ### Everything else
-Any CSV with a `Title` or `Name` column. Optional: `thumbnail`, `Platform`, `Status`.
+Any CSV with a `Title` or `Name` column. Optional extras: `thumbnail`, `Platform`, `Status`.
 
 ---
 
-## Roadmap / known limitations
+## Known limitations
 
-- Simkl episode counts are not available from the API (only airing status); the watched counter still works, it just won't show a `/total` denominator for Simkl-sourced shows.
-- ComicVine search matches on title only; very generic series names (e.g. "Batman") will match the most popular result which may not be the exact volume you mean.
-- iTunes cover search works best when both artist and album name are in the CSV.
+- Simkl does not return per-episode counts from its API, only airing status. The **👁 watched** counter in Currently Releasing works, but won't show a `/total` denominator for Simkl-sourced shows.
+- ComicVine search matches on series title only. Generic names (e.g. "Batman") will match the most popular result, which may not be the exact volume you mean.
+- iTunes cover search works best when both artist and album name are present in the CSV.
 
 ---
 
