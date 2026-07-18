@@ -635,6 +635,25 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 .ongoing-tile:hover { border-color: var(--accent); }
 
+/* Behind indicator — shown when the user has unwatched aired episodes */
+.ongoing-tile.ongoing-tile--behind { border-color: var(--warning); }
+.ongoing-tile.ongoing-tile--behind:hover { border-color: var(--warning); filter: brightness(1.06); }
+
+.behind-badge {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  background: var(--warning);
+  color: #1a1a1a;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 3px;
+  z-index: 2;
+  pointer-events: none;
+  line-height: 1.3;
+}
+
 .ongoing-tile-thumb {
   width: 100%;
   aspect-ratio: 2/3;

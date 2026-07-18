@@ -135,8 +135,9 @@ router.post('/sync/simkl', async (req, res) => {
       const extId = show.ids?.simkl ? String(show.ids.simkl) : null
       const thumb = show.poster ? `https://simkl.in/posters/${show.poster}_m.webp` : null
 
-      // Fetch per-show airing status — all-items doesn't include it
+      // Fetch per-show details — all-items doesn't include airing status or episode counts
       let showStatus = null
+      let airingInfo = null
       if (extId) {
         try {
           const detailRes = await fetch(
@@ -146,8 +147,19 @@ router.post('/sync/simkl', async (req, res) => {
           if (detailRes.ok) {
             const detail = await detailRes.json()
             showStatus = (detail.status || '').toLowerCase()
+            // aired_episodes is the count currently out; total_episodes is the planned run length
+            const aired = typeof detail.aired_episodes === 'number' ? detail.aired_episodes : null
+            const total = typeof detail.total_episodes === 'number' ? detail.total_episodes : null
+            if (aired !== null) {
+              airingInfo = JSON.stringify({
+                episodes_aired: aired,
+                total_episodes: total,
+                next_episode: null,
+                next_air_time: null,
+              })
+            }
           }
-        } catch { /* keep showStatus null — include by default */ }
+        } catch { /* keep defaults — include show by default */ }
         await new Promise(resolve => setTimeout(resolve, 300))
       }
 
@@ -160,13 +172,17 @@ router.post('/sync/simkl', async (req, res) => {
           ['series_ongoing', extId]
         )
         if (existing) {
-          await db.run('UPDATE ongoing_items SET metadata = ? WHERE id = ?', [meta, existing.id])
+          // Update both status metadata and episode count so the "behind" indicator stays fresh
+          await db.run(
+            'UPDATE ongoing_items SET metadata = ?, airing_info = ? WHERE id = ?',
+            [meta, airingInfo, existing.id]
+          )
           continue
         }
       }
       await db.run(
-        'INSERT INTO ongoing_items (category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?)',
-        ['series_ongoing', show.title, extId, thumb, meta, 'simkl']
+        'INSERT INTO ongoing_items (category, title, external_id, thumbnail_url, metadata, airing_info, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        ['series_ongoing', show.title, extId, thumb, meta, airingInfo, 'simkl']
       )
       count++
     }

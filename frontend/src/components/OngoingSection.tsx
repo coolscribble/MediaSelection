@@ -185,16 +185,24 @@ function OngoingRow({ category }: { category: OngoingCategoryDef }) {
         {visibleItems.map(item => {
           const ai = item.airing_info
           const airingStr = ai ? formatAiring(ai) : ''
-          const airedCount = ai ? (ai.total_episodes ?? ai.episodes_aired ?? null) : null
+          // episodes_aired = what's currently out; use this as the watched ceiling, not total_episodes
+          const episodesAired = ai?.episodes_aired ?? null
           const watched = watchedMap[item.id] ?? 0
           const showProgress = category.id === 'anime_ongoing' || category.id === 'series_ongoing' || category.id === 'manga_ongoing'
           const unit = category.id === 'manga_ongoing' ? 'ch' : 'ep'
+          // Number of episodes out that the user hasn't watched yet
+          const behind = showProgress && episodesAired !== null && episodesAired > watched
+            ? episodesAired - watched
+            : 0
           return (
-            <div key={item.id} className="ongoing-tile" title={item.title}>
+            <div key={item.id} className={`ongoing-tile${behind > 0 ? ' ongoing-tile--behind' : ''}`} title={item.title}>
               {item.thumbnail_url
                 ? <img className="ongoing-tile-thumb" src={item.thumbnail_url} alt="" loading="lazy" />
                 : <div className="ongoing-tile-thumb-placeholder">{category.icon}</div>
               }
+              {behind > 0 && (
+                <div className="behind-badge" title={`${behind} ${unit} to catch up`}>+{behind}</div>
+              )}
               <div className="ongoing-tile-info">
                 <span className="ongoing-tile-title">{item.title}</span>
                 {airingStr && <span className="ongoing-tile-airing">{airingStr}</span>}
@@ -205,11 +213,15 @@ function OngoingRow({ category }: { category: OngoingCategoryDef }) {
                       type="number"
                       className="ongoing-watched-input"
                       min={0}
-                      max={airedCount ?? undefined}
+                      max={episodesAired ?? undefined}
                       value={watched}
                       onChange={e => handleWatched(item.id, parseInt(e.target.value))}
                     />
-                    {airedCount !== null && <span>/{airedCount}</span>}
+                    {episodesAired !== null && (
+                      <span style={behind > 0 ? { color: 'var(--warning)', fontWeight: 600 } : undefined}>
+                        /{episodesAired}
+                      </span>
+                    )}
                     <span>{unit}</span>
                   </div>
                 )}
