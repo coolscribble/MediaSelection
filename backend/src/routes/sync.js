@@ -54,9 +54,11 @@ router.post('/aoty', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }) }
 });
 
-// Fetch ComicVine covers for comics (legacy)
+// Fetch ComicVine covers for comics
 router.post('/comicvine', async (req, res) => {
-  try { res.json(await syncComicVine()) }
+  const { itemId } = req.body || {};
+  const opts = itemId ? { itemId: Number(itemId) } : {};
+  try { res.json(await syncComicVine(opts)) }
   catch (e) { res.status(500).json({ error: e.message }) }
 });
 

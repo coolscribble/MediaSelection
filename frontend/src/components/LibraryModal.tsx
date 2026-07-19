@@ -1,6 +1,10 @@
 import { useState, useEffect, useRef } from 'react'
 import { Category, LibraryItem } from '../types'
-import { getLibrary, addLibraryItem, deleteLibraryItem, importCSV, refreshCategoryCovers, refreshItemCover, previewCSVImport } from '../api'
+import {
+  getLibrary, addLibraryItem, deleteLibraryItem,
+  importCSV, refreshCategoryCovers, refreshItemCover, previewCSVImport,
+  updateLibraryItemCover, uploadLibraryItemCover, fetchComicVineCovers,
+} from '../api'
 import { toast, dismiss } from '../notifications'
 
 interface Props {
@@ -10,7 +14,6 @@ interface Props {
   onRefresh: () => void
 }
 
-// Categories that have a cover sync API
 const COVER_CATEGORIES: Category[] = ['games', 'albums', 'comics', 'anime', 'manga']
 
 interface CSVPreview {
@@ -18,6 +21,13 @@ interface CSVPreview {
   serviceValues: string[]
   filterColumns: { column: string; values: string[] }[]
   hasRetroAchievements: boolean
+}
+
+interface CVCandidate {
+  id: number
+  name: string
+  start_year: string | null
+  thumb: string | null
 }
 
 export default function LibraryModal({ category, label, onClose, onRefresh }: Props) {
@@ -29,20 +39,32 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
   const [msg, setMsg] = useState('')
   const [refreshingAll, setRefreshingAll] = useState(false)
   const [refreshingItem, setRefreshingItem] = useState<number | null>(null)
-  // CSV 2-step import state (games only)
+  // CSV import
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [csvPreview, setCsvPreview] = useState<CSVPreview | null>(null)
   const [selectedAcqTypes, setSelectedAcqTypes] = useState<Set<string>>(new Set())
   const [selectedPlatforms, setSelectedPlatforms] = useState<Set<string>>(new Set())
   const [retroOnly, setRetroOnly] = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
+  // Cover edit
+  const [editingCoverId, setEditingCoverId] = useState<number | null>(null)
+  const [editCoverUrl, setEditCoverUrl] = useState('')
+  const [coverBusy, setCoverBusy] = useState(false)
+  // ComicVine review mode
+  const [reviewMode, setReviewMode] = useState(false)
+  const [cvSyncing, setCvSyncing] = useState(false)
+
   const fileRef = useRef<HTMLInputElement>(null)
+  const coverFileRef = useRef<HTMLInputElement>(null)
 
   const load = () => getLibrary(category).then(d => setItems(d as LibraryItem[])).catch(() => {})
 
   useEffect(() => { load() }, [category])
 
   const filtered = items.filter(i => {
+    if (reviewMode) {
+      return !!(i.metadata as Record<string, unknown>).cv_needs_review
+    }
     const q = search.toLowerCase()
     if (!q) return true
     if (i.title.toLowerCase().includes(q)) return true
@@ -51,6 +73,8 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
       : ''
     return romaji.includes(q)
   })
+
+  const reviewCount = items.filter(i => !!(i.metadata as Record<string, unknown>).cv_needs_review).length
 
   const handleAdd = async () => {
     if (!newTitle.trim()) return
@@ -95,7 +119,58 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
     finally { setRefreshingItem(null) }
   }
 
-  // Step 1: file selected → preview
+  const handleComicVineSync = async () => {
+    setCvSyncing(true)
+    const tid = toast('Fetching ComicVine covers…', 'info', true)
+    try {
+      const r = await fetchComicVineCovers() as { updated?: number; skipped?: number; needsReview?: number }
+      dismiss(tid)
+      const parts = [`${r.updated ?? 0} updated`, `${r.skipped ?? 0} not found`]
+      if ((r.needsReview ?? 0) > 0) parts.push(`${r.needsReview} need review`)
+      toast(`ComicVine: ${parts.join(', ')}`, 'success')
+      load()
+    } catch (e: unknown) {
+      dismiss(tid)
+      toast(e instanceof Error ? e.message : 'ComicVine sync failed', 'error')
+    } finally { setCvSyncing(false) }
+  }
+
+  // Cover edit handlers
+  const handleApplyCoverUrl = async (itemId: number, clearReview = false) => {
+    if (!editCoverUrl.trim() && !clearReview) return
+    setCoverBusy(true)
+    try {
+      await updateLibraryItemCover(itemId, editCoverUrl.trim(), clearReview)
+      setEditingCoverId(null); setEditCoverUrl('')
+      load()
+    } catch { /* silent */ }
+    finally { setCoverBusy(false) }
+  }
+
+  const handleCoverFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || editingCoverId === null) return
+    if (coverFileRef.current) coverFileRef.current.value = ''
+    setCoverBusy(true)
+    try {
+      await uploadLibraryItemCover(editingCoverId, file)
+      setEditingCoverId(null); setEditCoverUrl('')
+      load()
+    } catch { /* silent */ }
+    finally { setCoverBusy(false) }
+  }
+
+  const handlePickCandidate = async (itemId: number, thumb: string | null) => {
+    if (!thumb) return
+    setCoverBusy(true)
+    try {
+      await updateLibraryItemCover(itemId, thumb, true)
+      load()
+    } catch { /* silent */ }
+    finally { setCoverBusy(false) }
+  }
+
+  // CSV import handlers
   const handleCSVSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -111,11 +186,9 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
         setSelectedPlatforms(new Set(preview.platforms))
         setRetroOnly(false)
       } catch {
-        // Fallback: import without filter
         setCsvPreview({ platforms: [], serviceValues: [], filterColumns: [], hasRetroAchievements: false })
       } finally { setPreviewLoading(false) }
     } else {
-      // Non-games: import immediately
       setBusy(true)
       try {
         const result = await importCSV(category, file) as { imported: number }
@@ -127,7 +200,6 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
     }
   }
 
-  // Step 2 (games only): actually import with chosen filters
   const handleCSVConfirm = async () => {
     if (!csvFile) return
     setBusy(true)
@@ -149,22 +221,14 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
   }
 
   const toggleAcqType = (t: string) => {
-    setSelectedAcqTypes(prev => {
-      const next = new Set(prev)
-      if (next.has(t)) next.delete(t); else next.add(t)
-      return next
-    })
+    setSelectedAcqTypes(prev => { const n = new Set(prev); n.has(t) ? n.delete(t) : n.add(t); return n })
   }
-
   const togglePlatform = (p: string) => {
-    setSelectedPlatforms(prev => {
-      const next = new Set(prev)
-      if (next.has(p)) next.delete(p); else next.add(p)
-      return next
-    })
+    setSelectedPlatforms(prev => { const n = new Set(prev); n.has(p) ? n.delete(p) : n.add(p); return n })
   }
 
   const hasCoverAPI = COVER_CATEGORIES.includes(category)
+  const inputStyle = { background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '6px 10px', fontSize: 12 }
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -178,14 +242,14 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
           {/* Add manually */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
             <input
-              style={{ flex: 1, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '7px 10px', fontSize: 13 }}
+              style={{ flex: 1, ...inputStyle, padding: '7px 10px', fontSize: 13 }}
               placeholder="Add manually — title…"
               value={newTitle}
               onChange={e => setNewTitle(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && handleAdd()}
             />
             <input
-              style={{ width: 140, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text)', padding: '7px 10px', fontSize: 13 }}
+              style={{ width: 140, ...inputStyle, padding: '7px 10px', fontSize: 13 }}
               placeholder="Image URL (opt.)"
               value={newThumb}
               onChange={e => setNewThumb(e.target.value)}
@@ -204,8 +268,29 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
                 {refreshingAll ? '…' : '🖼 Refresh All Covers'}
               </button>
             )}
+            {category === 'comics' && (
+              <button className="btn-secondary" onClick={handleComicVineSync} disabled={cvSyncing || busy}>
+                {cvSyncing ? '…' : '🎨 ComicVine Sync'}
+              </button>
+            )}
+            {category === 'comics' && reviewCount > 0 && (
+              <button
+                className="btn-secondary"
+                onClick={() => { setReviewMode(r => !r); setSearch('') }}
+                style={{ color: reviewMode ? 'var(--text)' : 'var(--warning, #e6a817)', borderColor: reviewMode ? undefined : 'var(--warning, #e6a817)' }}
+              >
+                {reviewMode ? '← All comics' : `🔍 ${reviewCount} need review`}
+              </button>
+            )}
             {msg && <span style={{ fontSize: 12, color: msg.startsWith('Import') || msg.startsWith('Added') ? 'var(--success)' : 'var(--danger)' }}>{msg}</span>}
           </div>
+
+          {/* Review mode hint */}
+          {reviewMode && (
+            <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 6, padding: '8px 12px', marginBottom: 10, fontSize: 12, color: 'var(--text2)' }}>
+              ComicVine found multiple volumes for these titles. Click a candidate cover to apply it, or enter a URL manually.
+            </div>
+          )}
 
           {/* Games CSV filter step */}
           {category === 'games' && csvFile && (
@@ -219,9 +304,7 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
                   </div>
                   {csvPreview && csvPreview.platforms.length > 0 && (
                     <>
-                      <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 6 }}>
-                        Filter by gaming system (uncheck to exclude):
-                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 6 }}>Filter by gaming system (uncheck to exclude):</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
                         {csvPreview.platforms.map(p => (
                           <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer', background: 'var(--surface)', padding: '4px 10px', borderRadius: 6, border: selectedPlatforms.has(p) ? '1px solid var(--accent)' : '1px solid var(--border)' }}>
@@ -234,9 +317,7 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
                   )}
                   {csvPreview && csvPreview.serviceValues.length > 0 ? (
                     <>
-                      <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 6 }}>
-                        Filter by format / digital service (uncheck to exclude):
-                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 6 }}>Filter by format / digital service (uncheck to exclude):</div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
                         {csvPreview.serviceValues.map(t => (
                           <label key={t} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer', background: 'var(--surface)', padding: '4px 10px', borderRadius: 6, border: selectedAcqTypes.has(t) ? '1px solid var(--accent)' : '1px solid var(--border)' }}>
@@ -247,9 +328,7 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
                       </div>
                     </>
                   ) : (
-                    <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
-                      No acquisition type filter detected — will import all games.
-                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>No acquisition type filter detected — will import all games.</div>
                   )}
                   {csvPreview?.hasRetroAchievements && (
                     <div style={{ marginBottom: 12 }}>
@@ -260,12 +339,8 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button className="btn-primary" onClick={handleCSVConfirm} disabled={busy}>
-                      {busy ? 'Importing…' : '✓ Import'}
-                    </button>
-                    <button className="btn-ghost" onClick={() => { setCsvFile(null); setCsvPreview(null) }}>
-                      Cancel
-                    </button>
+                    <button className="btn-primary" onClick={handleCSVConfirm} disabled={busy}>{busy ? 'Importing…' : '✓ Import'}</button>
+                    <button className="btn-ghost" onClick={() => { setCsvFile(null); setCsvPreview(null) }}>Cancel</button>
                   </div>
                 </>
               )}
@@ -274,56 +349,139 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
 
           <div className="divider" />
 
-          <div className="form-group lib-search">
-            <input placeholder="Search library…" value={search} onChange={e => setSearch(e.target.value)} />
-          </div>
+          {!reviewMode && (
+            <div className="form-group lib-search">
+              <input placeholder="Search library…" value={search} onChange={e => setSearch(e.target.value)} />
+            </div>
+          )}
+
+          {/* Hidden file input for cover uploads */}
+          <input
+            ref={coverFileRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleCoverFileChange}
+          />
 
           <div className="lib-list">
-            {filtered.length === 0 && <div style={{ color: 'var(--text2)', fontSize: 13 }}>No items</div>}
+            {filtered.length === 0 && (
+              <div style={{ color: 'var(--text2)', fontSize: 13 }}>
+                {reviewMode ? 'No items need review.' : 'No items'}
+              </div>
+            )}
             {filtered.map(item => {
-              const meta = item.metadata as Record<string, string | string[]>
-              const artist = category === 'albums' ? (meta.artist as string || '') : ''
-              const author = category === 'comics' ? (meta.author as string || '') : ''
+              const meta = item.metadata as Record<string, unknown>
+              const artist  = category === 'albums' ? (meta.artist  as string || '') : ''
+              const author  = category === 'comics' ? (meta.author  as string || '') : ''
               const platform = category === 'games'
                 ? ((meta.platform as string) || (Array.isArray(meta.platforms) ? (meta.platforms as string[]).slice(0, 2).join(', ') : ''))
                 : ''
               const acqType = category === 'games' ? (meta.acquisition_type as string || '') : ''
+              const cvCandidates = (meta.cv_candidates || []) as CVCandidate[]
+              const isEditing = editingCoverId === item.id
+
               return (
-                <div key={item.id} className="lib-item" style={{ cursor: 'default' }}>
-                  {item.thumbnail_url
-                    ? <img className="lib-thumb" src={item.thumbnail_url} alt={item.title} />
-                    : <div className="lib-thumb-placeholder">📄</div>
-                  }
-                  <div className="lib-info" style={{ flex: 1, minWidth: 0 }}>
-                    <div className="lib-name">{item.title}</div>
-                    <div className="lib-source" style={{ display: 'flex', flexWrap: 'wrap', gap: '0 6px' }}>
-                      <span>{item.source}</span>
-                      {platform && <span>· {platform}</span>}
-                      {artist && <span>· {artist}</span>}
-                      {author && <span>· {author}</span>}
-                      {acqType && <span style={{ color: 'var(--accent)' }}>· {acqType}</span>}
-                      {(meta.status as string) && <span>· {meta.status}</span>}
-                      {meta.is_dlc && <span style={{ color: 'var(--danger)', fontWeight: 600 }}>· DLC</span>}
+                <div key={item.id}>
+                  <div className="lib-item" style={{ cursor: 'default' }}>
+                    {item.thumbnail_url
+                      ? <img className="lib-thumb" src={item.thumbnail_url} alt={item.title} />
+                      : <div className="lib-thumb-placeholder">📄</div>
+                    }
+                    <div className="lib-info" style={{ flex: 1, minWidth: 0 }}>
+                      <div className="lib-name">{item.title}</div>
+                      <div className="lib-source" style={{ display: 'flex', flexWrap: 'wrap', gap: '0 6px' }}>
+                        <span>{item.source}</span>
+                        {platform && <span>· {platform}</span>}
+                        {artist && <span>· {artist}</span>}
+                        {author && <span>· {author}</span>}
+                        {acqType && <span style={{ color: 'var(--accent)' }}>· {acqType}</span>}
+                        {typeof meta.status === 'string' && meta.status && <span>· {meta.status}</span>}
+                        {!!meta.is_dlc && <span style={{ color: 'var(--danger)', fontWeight: 600 }}>· DLC</span>}
+                      </div>
                     </div>
-                  </div>
-                  <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
-                    {hasCoverAPI && (
+                    <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                       <button
                         className="btn-icon"
-                        title="Refresh cover"
-                        onClick={() => handleRefreshItem(item.id)}
-                        disabled={refreshingItem === item.id}
+                        title="Edit cover"
+                        onClick={() => {
+                          if (isEditing) { setEditingCoverId(null); setEditCoverUrl('') }
+                          else { setEditingCoverId(item.id); setEditCoverUrl('') }
+                        }}
                         style={{ fontSize: 12 }}
                       >
-                        {refreshingItem === item.id ? '…' : '⟳'}
+                        ✏
                       </button>
-                    )}
-                    <button
-                      className="btn-danger"
-                      style={{ fontSize: 11, padding: '3px 8px' }}
-                      onClick={() => handleDelete(item.id)}
-                    >✕</button>
+                      {hasCoverAPI && (
+                        <button
+                          className="btn-icon"
+                          title="Refresh cover"
+                          onClick={() => handleRefreshItem(item.id)}
+                          disabled={refreshingItem === item.id}
+                          style={{ fontSize: 12 }}
+                        >
+                          {refreshingItem === item.id ? '…' : '⟳'}
+                        </button>
+                      )}
+                      <button
+                        className="btn-danger"
+                        style={{ fontSize: 11, padding: '3px 8px' }}
+                        onClick={() => handleDelete(item.id)}
+                      >✕</button>
+                    </div>
                   </div>
+
+                  {/* Inline cover edit row */}
+                  {isEditing && (
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '6px 8px 8px', background: 'var(--surface2)', borderRadius: '0 0 6px 6px', marginTop: -2, flexWrap: 'wrap' }}>
+                      <input
+                        style={{ flex: 1, minWidth: 160, ...inputStyle }}
+                        placeholder="Paste image URL…"
+                        value={editCoverUrl}
+                        onChange={e => setEditCoverUrl(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleApplyCoverUrl(item.id, reviewMode)}
+                      />
+                      <button className="btn-secondary" style={{ fontSize: 11, padding: '4px 8px' }}
+                        onClick={() => coverFileRef.current?.click()} disabled={coverBusy}>
+                        📁 File
+                      </button>
+                      <button className="btn-primary" style={{ fontSize: 11, padding: '4px 8px' }}
+                        onClick={() => handleApplyCoverUrl(item.id, reviewMode)} disabled={coverBusy || !editCoverUrl.trim()}>
+                        Apply
+                      </button>
+                      {reviewMode && (
+                        <button className="btn-secondary" style={{ fontSize: 11, padding: '4px 8px' }}
+                          onClick={() => handleApplyCoverUrl(item.id, true)} disabled={coverBusy}>
+                          Skip (keep current)
+                        </button>
+                      )}
+                      <button className="btn-ghost" style={{ fontSize: 11, padding: '4px 8px' }}
+                        onClick={() => { setEditingCoverId(null); setEditCoverUrl('') }}>
+                        ✕
+                      </button>
+                    </div>
+                  )}
+
+                  {/* ComicVine review candidates */}
+                  {reviewMode && cvCandidates.length > 0 && (
+                    <div style={{ padding: '6px 8px 10px', background: 'var(--surface2)', borderTop: '1px solid var(--border)', display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                      <span style={{ fontSize: 11, color: 'var(--text2)', alignSelf: 'center', flexShrink: 0 }}>Pick cover:</span>
+                      {cvCandidates.map(c => (
+                        <div
+                          key={c.id}
+                          title={`${c.name}${c.start_year ? ` (${c.start_year})` : ''}`}
+                          style={{ cursor: c.thumb ? 'pointer' : 'default', textAlign: 'center' }}
+                          onClick={() => c.thumb && handlePickCandidate(item.id, c.thumb)}
+                        >
+                          {c.thumb
+                            ? <img src={c.thumb} alt={c.name} style={{ width: 48, height: 68, objectFit: 'cover', borderRadius: 4, border: '2px solid var(--border)', display: 'block' }} />
+                            : <div style={{ width: 48, height: 68, borderRadius: 4, background: 'var(--surface)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, color: 'var(--text2)' }}>No img</div>
+                          }
+                          <div style={{ fontSize: 10, color: 'var(--text2)', marginTop: 2 }}>{c.start_year ?? '?'}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )
             })}

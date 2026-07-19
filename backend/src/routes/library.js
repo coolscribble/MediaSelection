@@ -1,6 +1,12 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const { db } = require('../database');
+const { COVERS_DIR, titleSlug } = require('../services/imageCache');
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 router.get('/:category', async (req, res) => {
   try {
@@ -31,6 +37,46 @@ router.delete('/clear/:category', async (req, res) => {
     );
     await db.run('DELETE FROM library_items WHERE category = ?', [req.params.category]);
     res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Update cover URL for any library item; pass clear_review:true to remove ComicVine review flag
+router.patch('/:id', async (req, res) => {
+  try {
+    const item = await db.get('SELECT metadata FROM library_items WHERE id = ?', [req.params.id]);
+    if (!item) return res.status(404).json({ error: 'Not found' });
+    const { thumbnail_url, clear_review } = req.body;
+    const sets = [], vals = [];
+    if (thumbnail_url !== undefined) { sets.push('thumbnail_url = ?'); vals.push(thumbnail_url || null); }
+    if (clear_review) {
+      const meta = JSON.parse(item.metadata || '{}');
+      delete meta.cv_needs_review;
+      delete meta.cv_candidates;
+      sets.push('metadata = ?');
+      vals.push(JSON.stringify(meta));
+    }
+    if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
+    vals.push(req.params.id);
+    await db.run(`UPDATE library_items SET ${sets.join(', ')} WHERE id = ?`, vals);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Upload a cover image file — saves directly to local covers cache
+router.post('/:id/cover', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+    const item = await db.get('SELECT id, category, title FROM library_items WHERE id = ?', [req.params.id]);
+    if (!item) return res.status(404).json({ error: 'Item not found' });
+    const subdir = path.join(COVERS_DIR, item.category);
+    if (!fs.existsSync(subdir)) fs.mkdirSync(subdir, { recursive: true });
+    const mime = req.file.mimetype || '';
+    const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : mime.includes('gif') ? 'gif' : 'jpg';
+    const filename = `${titleSlug(item.title)}.${ext}`;
+    fs.writeFileSync(path.join(subdir, filename), req.file.buffer);
+    const localUrl = `/api/covers/${item.category}/${filename}`;
+    await db.run('UPDATE library_items SET thumbnail_url = ? WHERE id = ?', [localUrl, item.id]);
+    res.json({ thumbnail_url: localUrl });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -25,6 +25,12 @@ export const addLibraryItem = (category: string, data: { title: string; thumbnai
   call(`/api/library/${category}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
 export const deleteLibraryItem = (id: number) => call(`/api/library/${id}`, { method: 'DELETE' })
 export const clearLibrary = (category: string) => call(`/api/library/clear/${category}`, { method: 'DELETE' })
+export const updateLibraryItemCover = (id: number, thumbnail_url: string, clear_review = false) =>
+  call(`/api/library/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ thumbnail_url, clear_review }) })
+export const uploadLibraryItemCover = async (id: number, file: File) => {
+  const form = new FormData(); form.append('file', file)
+  return call(`/api/library/${id}/cover`, { method: 'POST', body: form })
+}
 
 export const getSettings = () => call('/api/settings')
 export const saveSettings = (data: Record<string, unknown>) =>

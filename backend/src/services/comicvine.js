@@ -1,4 +1,5 @@
 const { db } = require('../database');
+const { cacheImage, titleSlug } = require('./imageCache');
 
 const BASE = 'https://comicvine.gamespot.com/api';
 const HEADERS = { 'User-Agent': 'MediaPicker/1.0' };
@@ -9,23 +10,71 @@ async function getApiKey() {
   return row.value;
 }
 
-// Search by series/volume title — returns best match or null
-async function searchVolume(title, apiKey) {
-  const q = encodeURIComponent(title);
-  const url = `${BASE}/search/?api_key=${apiKey}&query=${q}&resources=volume&format=json&field_list=id,name,image&limit=5`;
-  const r = await fetch(url, { headers: HEADERS });
-  if (!r.ok) return null;
-  const data = await r.json();
-  if (data.status_code !== 1) return null;
-  const results = data.results || [];
-  const titleLow = title.toLowerCase();
-  // Prefer exact name match
-  return results.find(x => x.name?.toLowerCase() === titleLow) || results[0] || null;
+// Parse CLZ/InfiniteBacklog titles: "Blue Beetle (Vol. 3) (2011 - 2013)"
+// Returns baseName ("Blue Beetle"), volume (3), startYear (2011)
+function parseComicTitle(title) {
+  const volMatch  = title.match(/\(Vol\.?\s*(\d+)\)/i);
+  const yearMatch = title.match(/\((\d{4})\s*[-–]\s*(\d{4}|Present)\)/i);
+  const singleYearMatch = !yearMatch && title.match(/\((\d{4})\)/);
+
+  const baseName = title
+    .replace(/\s*\(Vol\.?\s*\d+\)/gi, '')
+    .replace(/\s*\(\d{4}\s*[-–]\s*(?:\d{4}|Present)\)/gi, '')
+    .replace(/\s*\(\d{4}\)/g, '')
+    .trim();
+
+  return {
+    baseName: baseName || title,
+    volume: volMatch ? parseInt(volMatch[1]) : null,
+    startYear: yearMatch
+      ? parseInt(yearMatch[1])
+      : singleYearMatch ? parseInt(singleYearMatch[1]) : null,
+  };
 }
 
-// Direct lookup by ComicVine volume ID
+function buildCoverUrl(image) {
+  return image?.medium_url || image?.original_url || image?.small_url || null;
+}
+
+// Search by volume title — returns { result, confident, candidates }
+// Uses base name (strips Vol/year suffixes), then matches by start_year
+async function searchVolume(title, apiKey) {
+  const { baseName, startYear } = parseComicTitle(title);
+  const q = encodeURIComponent(baseName);
+  const url = `${BASE}/search/?api_key=${apiKey}&query=${q}&resources=volume&format=json&field_list=id,name,image,start_year,count_of_issues&limit=10`;
+  const r = await fetch(url, { headers: HEADERS });
+  if (!r.ok) return { result: null, confident: false, candidates: [] };
+  const data = await r.json();
+  if (data.status_code !== 1) return { result: null, confident: false, candidates: [] };
+
+  const results = data.results || [];
+  const nameLow = baseName.toLowerCase();
+  // Prefer exact name matches; fall back to all results if none
+  const nameMatches = results.filter(x => x.name?.toLowerCase() === nameLow);
+  const pool = nameMatches.length > 0 ? nameMatches : results;
+
+  if (pool.length === 0) return { result: null, confident: false, candidates: [] };
+  if (pool.length === 1) return { result: pool[0], confident: true, candidates: [] };
+
+  // Multiple volumes of the same name — match by start year (±1 tolerance)
+  if (startYear) {
+    const yearHit = pool.find(x => x.start_year && Math.abs(parseInt(x.start_year) - startYear) <= 1);
+    if (yearHit) return { result: yearHit, confident: true, candidates: [] };
+  }
+
+  // Ambiguous — best guess is first result; store up to 5 as review candidates
+  const candidates = pool.slice(0, 5).map(x => ({
+    id: x.id,
+    name: x.name,
+    start_year: x.start_year || null,
+    thumb: buildCoverUrl(x.image),
+  }));
+  return { result: pool[0], confident: false, candidates };
+}
+
+// Direct lookup by ComicVine volume ID (stored as external_id)
 async function lookupById(cvId, apiKey) {
-  const url = `${BASE}/volume/4050-${cvId}/?api_key=${apiKey}&format=json&field_list=id,name,image`;
+  const url = `${BASE}/volume/4050-${cvId}/?api_key=${apiKey}&format=json&field_list=id,name,image,start_year`;
   const r = await fetch(url, { headers: HEADERS });
   if (!r.ok) return null;
   const data = await r.json();
@@ -33,45 +82,54 @@ async function lookupById(cvId, apiKey) {
   return data.results || null;
 }
 
-function buildCoverUrl(image) {
-  // medium_url is typically 800px wide — good quality without being excessive
-  return image?.medium_url || image?.original_url || image?.small_url || null;
-}
-
-async function syncComicVine() {
+async function syncComicVine({ itemId } = {}) {
   const apiKey = await getApiKey();
 
-  const comics = await db.all(
-    "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'comics'"
-  );
+  const query = itemId
+    ? "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'comics' AND id = ?"
+    : "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'comics'";
+  const comics = itemId ? await db.all(query, [itemId]) : await db.all(query);
 
-  let updated = 0, skipped = 0;
+  let updated = 0, skipped = 0, needsReview = 0;
   for (const comic of comics) {
     const meta = JSON.parse(comic.metadata || '{}');
 
-    let result = null;
-    if (comic.external_id) {
+    let result = null, confident = false, candidates = [];
+
+    // Use stored CV ID for direct lookup (faster + more accurate on re-runs)
+    if (comic.external_id && !itemId) {
       result = await lookupById(comic.external_id, apiKey);
+      confident = !!result;
     }
     if (!result) {
-      result = await searchVolume(comic.title, apiKey);
+      ({ result, confident, candidates } = await searchVolume(comic.title, apiKey));
     }
     if (!result) { skipped++; continue; }
 
     const thumb = buildCoverUrl(result.image);
+    const localThumb = thumb ? await cacheImage('comics', titleSlug(comic.title), thumb) : thumb;
+
     const merged = { ...meta, comicvine_id: result.id };
+    if (!confident) {
+      merged.cv_needs_review = true;
+      merged.cv_candidates = candidates;
+      needsReview++;
+    } else {
+      delete merged.cv_needs_review;
+      delete merged.cv_candidates;
+    }
 
     await db.run(
       'UPDATE library_items SET thumbnail_url = ?, metadata = ?, external_id = ? WHERE id = ?',
-      [thumb ?? comic.thumbnail_url, JSON.stringify(merged), String(result.id), comic.id]
+      [localThumb ?? comic.thumbnail_url, JSON.stringify(merged), String(result.id), comic.id]
     );
     updated++;
 
-    // ComicVine free tier: ~200 req/hour — 500ms keeps us well within limits
+    // ComicVine free tier: ~200 req/hour — 500ms stays well within limit
     await new Promise(res => setTimeout(res, 500));
   }
 
-  return { updated, skipped };
+  return { updated, skipped, needsReview };
 }
 
 module.exports = { syncComicVine };
