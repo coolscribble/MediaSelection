@@ -100,7 +100,9 @@ function normalizeComicsTitle(t) {
 
 // Generic "digital" labels — never shown as filter options; games with only these values
 // are always imported regardless of the service filter (can't be categorised further).
-const GENERIC_DIGITAL = new Set(['digital', 'download', 'digital copy', 'downloadable']);
+// "Retro Achievement" appears as a Digital service value in InfiniteBacklog exports —
+// it is a tracking system, not an acquisition store, so treat it as a pass-through.
+const GENERIC_DIGITAL = new Set(['digital', 'download', 'digital copy', 'downloadable', 'retro achievement', 'retro achievements', 'retroachievements']);
 
 // Known service/format values to identify filterable columns in the CSV
 const SERVICE_VALUE_SET = new Set([
@@ -221,10 +223,11 @@ async function importCSV(buffer, category, options = {}) {
         continue;
       }
 
-      // Platform filter — only import games from selected gaming systems
+      // Platform filter — only import games from selected gaming systems.
+      // Games with a blank Platform field are always passed through.
       if (platformFilter) {
         const platform = (r['Platform'] || r['platform'] || '').trim().toLowerCase();
-        if (!platformFilter.has(platform)) {
+        if (platform && !platformFilter.has(platform)) {
           console.log(`[csv] SKIP (platform filter): "${_gameTitle}" platform="${r['Platform'] || ''}"`);
           continue;
         }
