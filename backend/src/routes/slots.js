@@ -1,6 +1,17 @@
 const express = require('express');
 const router = express.Router();
+const path = require('path');
+const fs = require('fs');
 const { db } = require('../database');
+const { COVERS_DIR } = require('../services/imageCache');
+
+async function deleteLocalCover(url) {
+  if (!url?.startsWith('/api/covers/')) return;
+  const other = await db.get('SELECT id FROM library_items WHERE thumbnail_url = ?', [url]);
+  if (other) return;
+  const rel = url.slice('/api/covers/'.length);
+  try { fs.unlinkSync(path.join(COVERS_DIR, rel)); } catch {}
+}
 
 const CATEGORIES = ['movies', 'series', 'anime', 'manga', 'games', 'comics', 'albums'];
 
@@ -84,12 +95,19 @@ router.post('/:id/complete', async (req, res) => {
     const completedItemId = slot.item_id;
     if (completedItemId) await incrementStat(req.userId, slot.category, slot.current_progress || 0);
 
+    const completedItem = completedItemId
+      ? await db.get('SELECT thumbnail_url FROM library_items WHERE id = ?', [completedItemId])
+      : null;
+
     await db.run(
       'UPDATE slots SET item_id = NULL, is_locked = 0, note = NULL, current_progress = 0 WHERE id = ?',
       [req.params.id]
     );
 
-    if (completedItemId) await db.run('DELETE FROM library_items WHERE id = ?', [completedItemId]);
+    if (completedItemId) {
+      await db.run('DELETE FROM library_items WHERE id = ?', [completedItemId]);
+      if (completedItem?.thumbnail_url) await deleteLocalCover(completedItem.thumbnail_url);
+    }
 
     if (await isQueueMode(req.userId, slot.category)) {
       const next = await consumeNextQueueItem(req.userId, slot.category);

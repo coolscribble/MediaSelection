@@ -6,6 +6,14 @@ const multer = require('multer');
 const { db } = require('../database');
 const { COVERS_DIR, titleSlug } = require('../services/imageCache');
 
+async function deleteLocalCover(url) {
+  if (!url?.startsWith('/api/covers/')) return;
+  const other = await db.get('SELECT id FROM library_items WHERE thumbnail_url = ?', [url]);
+  if (other) return;
+  const rel = url.slice('/api/covers/'.length);
+  try { fs.unlinkSync(path.join(COVERS_DIR, rel)); } catch {}
+}
+
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 router.get('/:category', async (req, res) => {
@@ -32,6 +40,10 @@ router.post('/:category', async (req, res) => {
 
 router.delete('/clear/:category', async (req, res) => {
   try {
+    const covers = await db.all(
+      'SELECT thumbnail_url FROM library_items WHERE user_id = ? AND category = ? AND thumbnail_url LIKE ?',
+      [req.userId, req.params.category, '/api/covers/%']
+    );
     await db.run(
       `UPDATE slots SET item_id = NULL, is_locked = 0
        WHERE user_id = ? AND item_id IN (SELECT id FROM library_items WHERE user_id = ? AND category = ?)`,
@@ -41,6 +53,7 @@ router.delete('/clear/:category', async (req, res) => {
       'DELETE FROM library_items WHERE user_id = ? AND category = ?',
       [req.userId, req.params.category]
     );
+    for (const { thumbnail_url } of covers) await deleteLocalCover(thumbnail_url);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -91,6 +104,10 @@ router.post('/:id/cover', upload.single('file'), async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
+    const item = await db.get(
+      'SELECT thumbnail_url FROM library_items WHERE id = ? AND user_id = ?',
+      [req.params.id, req.userId]
+    );
     await db.run(
       'UPDATE slots SET item_id = NULL, is_locked = 0 WHERE user_id = ? AND item_id = ?',
       [req.userId, req.params.id]
@@ -99,6 +116,7 @@ router.delete('/:id', async (req, res) => {
       'DELETE FROM library_items WHERE id = ? AND user_id = ?',
       [req.params.id, req.userId]
     );
+    if (item?.thumbnail_url) await deleteLocalCover(item.thumbnail_url);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
