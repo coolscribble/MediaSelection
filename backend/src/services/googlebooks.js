@@ -1,5 +1,5 @@
 const { db } = require('../database');
-const { cacheImage } = require('./imageCache');
+const { cacheImage, titleSlug } = require('./imageCache');
 
 const GB_BASE = 'https://www.googleapis.com/books/v1/volumes';
 
@@ -50,9 +50,6 @@ async function searchOpenLibrary(title) {
   } catch { return null; }
 }
 
-function titleSlug(title) {
-  return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
-}
 
 async function searchWikipedia(title) {
   try {
@@ -98,7 +95,7 @@ async function syncGoogleBooks({ itemId } = {}) {
     if (!thumb) thumb = await searchInternetArchive(comic.title);
     if (!thumb) { skipped++; continue; }
 
-    const localThumb = await cacheImage(`comics_${titleSlug(comic.title)}`, thumb);
+    const localThumb = await cacheImage('comics', titleSlug(comic.title), thumb);
     const meta = JSON.parse(comic.metadata || '{}');
     const vi = result?.volumeInfo || {};
     const merged = {

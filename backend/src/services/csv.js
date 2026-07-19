@@ -1,6 +1,7 @@
 const { parse } = require('csv-parse');
 const { Readable } = require('stream');
 const { db } = require('../database');
+const { checkCachedCover, titleSlug } = require('./imageCache');
 
 // Columns we never want in metadata (can contain long/malformed content)
 const SKIP_METADATA_COLS = new Set(['Progress notes', 'progress notes', 'notes', 'Notes', 'Collection notes']);
@@ -249,10 +250,25 @@ async function importCSV(buffer, category, options = {}) {
       }
     }
 
+    // Reuse locally cached cover if it exists (survives library clear + re-import)
+    const extId = extractExternalId(r) || null;
+    let cachedThumb = extractThumbnail(r) || null;
+    if (!cachedThumb) {
+      if (category === 'games' && extId) {
+        cachedThumb = checkCachedCover('games', `igdb_${extId}`);
+      } else if (category === 'comics') {
+        cachedThumb = checkCachedCover('comics', titleSlug(title));
+      } else if (category === 'anime' && extId) {
+        cachedThumb = checkCachedCover('anime', `anilist_${extId}`);
+      } else if (category === 'manga' && extId) {
+        cachedThumb = checkCachedCover('manga', `anilist_${extId}`);
+      }
+    }
+
     try {
       await db.run(
         'INSERT INTO library_items (category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?)',
-        [category, title.trim(), extractExternalId(r) || null, extractThumbnail(r) || null, JSON.stringify(buildMetadata(r)), 'csv']
+        [category, title.trim(), extId, cachedThumb, JSON.stringify(buildMetadata(r)), 'csv']
       );
       count++;
     } catch (e) {

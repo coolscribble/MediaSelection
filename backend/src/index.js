@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const { init } = require('./database');
+const { migrateCovers } = require('./services/imageCache');
 
 const app = express();
 app.use(cors());
@@ -26,7 +27,8 @@ if (fs.existsSync(STATIC_DIR)) {
 
 const PORT = process.env.PORT || 3000;
 
-init().then(() => {
+init().then(async () => {
+  await migrateCovers();
   app.listen(PORT, () => console.log(`MediaPicker on http://localhost:${PORT}`));
 }).catch(err => {
   console.error('DB init failed:', err);

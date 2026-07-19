@@ -1,4 +1,5 @@
 const { db } = require('../database');
+const { cacheImage } = require('./imageCache');
 
 const ANILIST_API = 'https://graphql.anilist.co';
 
@@ -52,6 +53,11 @@ async function syncAniList() {
         const romajiAlt = m.title.romaji && m.title.romaji !== storedTitle ? m.title.romaji : null
         const metadata = JSON.stringify({ format: m.format, status: m.status, total, ...(romajiAlt ? { romaji_title: romajiAlt } : {}) })
 
+        const remoteThumb = m.coverImage?.extraLarge || m.coverImage?.large || null;
+        const localThumb = remoteThumb
+          ? await cacheImage(category, `anilist_${m.id}`, remoteThumb)
+          : null;
+
         const existing = await db.get(
           'SELECT id FROM library_items WHERE category = ? AND external_id = ?',
           [category, String(m.id)]
@@ -59,12 +65,12 @@ async function syncAniList() {
         if (existing) {
           await db.run(
             'UPDATE library_items SET thumbnail_url = ?, metadata = ? WHERE id = ?',
-            [m.coverImage?.extraLarge || m.coverImage?.large || null, metadata, existing.id]
+            [localThumb, metadata, existing.id]
           );
         } else {
           await db.run(
             'INSERT INTO library_items (category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?)',
-            [category, m.title.english || m.title.romaji, String(m.id), m.coverImage?.extraLarge || m.coverImage?.large || null, metadata, 'anilist']
+            [category, m.title.english || m.title.romaji, String(m.id), localThumb, metadata, 'anilist']
           );
           type === 'ANIME' ? animeCount++ : mangaCount++;
         }

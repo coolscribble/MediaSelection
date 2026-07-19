@@ -1,9 +1,7 @@
 const { db } = require('../database');
-const { cacheImage } = require('./imageCache');
+const { cacheImage, titleSlug } = require('./imageCache');
 
-// iTunes Search API — no API key required
 const ITUNES_SEARCH = 'https://itunes.apple.com/search';
-// Deezer Search API — no API key required, used as fallback when iTunes finds nothing
 const DEEZER_SEARCH = 'https://api.deezer.com/search/album';
 
 async function searchITunes(artist, title) {
@@ -16,7 +14,6 @@ async function searchITunes(artist, title) {
   const results = (data.results || []).filter(x => x.wrapperType === 'collection');
   if (!results.length) return null;
 
-  // Prefer an exact album-name match; fall back to first result
   const titleLow = title.toLowerCase();
   const artistLow = artist.toLowerCase();
   return (
@@ -30,7 +27,6 @@ async function searchITunes(artist, title) {
 
 function buildCoverUrl(url100) {
   if (!url100) return null;
-  // Upgrade Apple's thumbnail to 600×600 (also available: 1000x1000bb)
   return url100.replace('100x100bb', '600x600bb');
 }
 
@@ -67,7 +63,6 @@ async function getMBCoverUrl(mbid) {
       headers: { 'User-Agent': 'MediaPicker/1.0' },
     });
     if (!r.ok) return null;
-    // CAA redirects to the actual image; r.url is the final URL after redirect
     return r.url || null;
   } catch { return null; }
 }
@@ -86,6 +81,7 @@ async function syncAOTY({ itemId } = {}) {
     const artist = meta.artist || meta.Artist || '';
 
     let thumb = null;
+    let stableKey = null;
     let merged = { ...meta };
 
     // 1. MusicBrainz + Cover Art Archive (primary — comprehensive, free)
@@ -94,6 +90,7 @@ async function syncAOTY({ itemId } = {}) {
       await new Promise(res => setTimeout(res, 1000)); // MusicBrainz rate limit: 1 req/s
       thumb = await getMBCoverUrl(mbResult.id);
       if (thumb) {
+        stableKey = `mb_${mbResult.id}`;
         merged = {
           ...meta,
           mb_id: mbResult.id,
@@ -108,6 +105,7 @@ async function syncAOTY({ itemId } = {}) {
       if (dz) {
         thumb = dz.cover_xl || dz.cover_big || null;
         if (thumb) {
+          stableKey = `dz_${dz.id}`;
           merged = {
             ...meta,
             deezer_id: dz.id,
@@ -123,6 +121,7 @@ async function syncAOTY({ itemId } = {}) {
       if (result) {
         thumb = buildCoverUrl(result.artworkUrl100);
         if (thumb) {
+          stableKey = `it_${result.collectionId}`;
           merged = {
             ...meta,
             itunes_id: result.collectionId,
@@ -134,9 +133,14 @@ async function syncAOTY({ itemId } = {}) {
       }
     }
 
+    if (!thumb || !stableKey) {
+      // Fallback key using title slug so at least the cover can be found later
+      stableKey = `album_${titleSlug(album.title)}`;
+    }
+
     if (!thumb) { skipped++; continue; }
 
-    const localThumb = await cacheImage(String(album.id), thumb);
+    const localThumb = await cacheImage('albums', stableKey, thumb);
     const extId = merged.itunes_id ? String(merged.itunes_id)
       : merged.deezer_id ? String(merged.deezer_id)
       : merged.mb_id ? String(merged.mb_id)
