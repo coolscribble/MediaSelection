@@ -28,7 +28,7 @@ async function getAccessToken() {
   return cachedToken;
 }
 
-const IGDB_FIELDS = 'fields name,cover.url,first_release_date,genres.name,platforms.name,total_rating;';
+const IGDB_FIELDS = 'fields name,cover.url,version_parent.cover.url,first_release_date,genres.name,platforms.name,total_rating;';
 
 async function igdbRequest(body, clientId, token) {
   const r = await fetch('https://api.igdb.com/v4/games', {
@@ -73,7 +73,7 @@ async function syncIGDB() {
     if (!result) { skipped++; continue; }
 
     // Build cover URL — cover_big size, WebP format for smaller file size
-    const rawUrl = result.cover?.url || null;
+    const rawUrl = result.cover?.url || result.version_parent?.cover?.url || null;
     const thumb = rawUrl
       ? rawUrl
           .replace('t_thumb', 't_cover_big')

@@ -122,9 +122,14 @@ router.post('/sync/simkl', async (req, res) => {
       const extId = show.ids?.simkl ? String(show.ids.simkl) : null
       const thumb = show.poster ? `https://simkl.in/posters/${show.poster}_m.webp` : null
 
-      // Fetch per-show details — all-items doesn't include airing status or episode counts
+      // Baseline episode data from the all-items response (no extra API call)
+      const totalFromEntry = show.episode_count != null ? Number(show.episode_count)
+        : show.total_episodes != null ? Number(show.total_episodes) : null
+      const watchedFromSimkl = entry.watched_episodes_count != null ? Number(entry.watched_episodes_count) : null
+
       let showStatus = null
       let airingInfo = null
+
       if (extId) {
         try {
           const detailRes = await fetch(
@@ -134,19 +139,44 @@ router.post('/sync/simkl', async (req, res) => {
           if (detailRes.ok) {
             const detail = await detailRes.json()
             showStatus = (detail.status || '').toLowerCase()
-            // aired_episodes / total_episodes may be number or string depending on Simkl's response
-            const aired = detail.aired_episodes != null ? Number(detail.aired_episodes) : null
-            const total = detail.total_episodes != null ? Number(detail.total_episodes) : null
+            // Try multiple field names — Simkl's response varies by show type/region
+            const aired = detail.aired_episodes != null ? Number(detail.aired_episodes)
+              : detail.total_aired_episodes != null ? Number(detail.total_aired_episodes)
+              : null
+            const total = detail.total_episodes != null ? Number(detail.total_episodes)
+              : detail.episode_count != null ? Number(detail.episode_count)
+              : totalFromEntry
             if (aired !== null && !isNaN(aired)) {
               airingInfo = JSON.stringify({
                 episodes_aired: aired,
-                total_episodes: (!isNaN(total) && total !== null) ? total : null,
+                total_episodes: total !== null && !isNaN(total) ? total : null,
+                next_episode: null,
+                next_air_time: null,
+              })
+            } else if (total !== null && !isNaN(total)) {
+              // Detail returned status but no explicit aired count — use total as best estimate
+              airingInfo = JSON.stringify({
+                episodes_aired: total,
+                total_episodes: total,
                 next_episode: null,
                 next_air_time: null,
               })
             }
           }
-        } catch { /* keep defaults — include show by default */ }
+        } catch (e) {
+          console.warn(`[simkl-ongoing] detail fetch failed for ${extId}: ${e.message}`)
+        }
+
+        // If detail API gave nothing, fall back to episode_count from all-items
+        if (!airingInfo && totalFromEntry !== null && !isNaN(totalFromEntry)) {
+          airingInfo = JSON.stringify({
+            episodes_aired: totalFromEntry,
+            total_episodes: totalFromEntry,
+            next_episode: null,
+            next_air_time: null,
+          })
+        }
+
         await new Promise(resolve => setTimeout(resolve, 300))
       }
 
@@ -159,7 +189,6 @@ router.post('/sync/simkl', async (req, res) => {
           ['series_ongoing', extId]
         )
         if (existing) {
-          // Only update airing_info when we have fresh data — never overwrite a good value with null
           if (airingInfo !== null) {
             await db.run(
               'UPDATE ongoing_items SET metadata = ?, airing_info = ? WHERE id = ?',
@@ -172,8 +201,8 @@ router.post('/sync/simkl', async (req, res) => {
         }
       }
       await db.run(
-        'INSERT INTO ongoing_items (category, title, external_id, thumbnail_url, metadata, airing_info, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        ['series_ongoing', show.title, extId, thumb, meta, airingInfo, 'simkl']
+        'INSERT INTO ongoing_items (category, title, external_id, thumbnail_url, metadata, airing_info, watched_progress, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+        ['series_ongoing', show.title, extId, thumb, meta, airingInfo, watchedFromSimkl ?? 0, 'simkl']
       )
       count++
     }

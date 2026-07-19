@@ -59,14 +59,15 @@ export interface OngoingCategoryDef {
   icon: string
   syncSource: 'anilist' | 'simkl' | null
   resultKey: string | null
+  libraryCategory: Category
 }
 
 export const ONGOING_CATEGORIES: OngoingCategoryDef[] = [
-  { id: 'series_ongoing',   label: 'TV Shows',         icon: '📺', syncSource: 'simkl',   resultKey: 'series' },
-  { id: 'anime_ongoing',    label: 'Anime',            icon: '⛩️', syncSource: 'anilist', resultKey: 'anime' },
-  { id: 'manga_ongoing',    label: 'Manga',            icon: '📚', syncSource: 'anilist', resultKey: 'manga' },
-  { id: 'comics_ongoing',   label: 'Comics',           icon: '💬', syncSource: null,      resultKey: null },
-  { id: 'games_continuous', label: 'Continuous Games', icon: '🎮', syncSource: null,      resultKey: null },
+  { id: 'series_ongoing',   label: 'TV Shows',         icon: '📺', syncSource: 'simkl',   resultKey: 'series', libraryCategory: 'series' },
+  { id: 'anime_ongoing',    label: 'Anime',            icon: '⛩️', syncSource: 'anilist', resultKey: 'anime',  libraryCategory: 'anime' },
+  { id: 'manga_ongoing',    label: 'Manga',            icon: '📚', syncSource: 'anilist', resultKey: 'manga',  libraryCategory: 'manga' },
+  { id: 'comics_ongoing',   label: 'Comics',           icon: '💬', syncSource: null,      resultKey: null,     libraryCategory: 'comics' },
+  { id: 'games_continuous', label: 'Continuous Games', icon: '🎮', syncSource: null,      resultKey: null,     libraryCategory: 'games' },
 ]
 
 export interface OngoingItem {

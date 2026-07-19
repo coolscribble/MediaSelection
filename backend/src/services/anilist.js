@@ -48,7 +48,9 @@ async function syncAniList() {
       for (const e of entries) {
         const m = e.media;
         const total = type === 'ANIME' ? (m.episodes || null) : (m.chapters || null);
-        const metadata = JSON.stringify({ format: m.format, status: m.status, total });
+        const storedTitle = m.title.english || m.title.romaji
+        const romajiAlt = m.title.romaji && m.title.romaji !== storedTitle ? m.title.romaji : null
+        const metadata = JSON.stringify({ format: m.format, status: m.status, total, ...(romajiAlt ? { romaji_title: romajiAlt } : {}) })
 
         const existing = await db.get(
           'SELECT id FROM library_items WHERE category = ? AND external_id = ?',

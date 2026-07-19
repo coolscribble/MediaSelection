@@ -22,6 +22,19 @@ function buildCoverUrl(item) {
   return url.replace('zoom=1', 'zoom=3').replace('&edge=curl', '').replace(/^http:/, 'https:');
 }
 
+async function searchOpenLibrary(title) {
+  try {
+    const q = encodeURIComponent(title);
+    const r = await fetch(`https://openlibrary.org/search.json?title=${q}&fields=key,cover_i,title&limit=5`, {
+      headers: { 'User-Agent': 'MediaPicker/1.0' },
+    });
+    if (!r.ok) return null;
+    const data = await r.json();
+    const item = (data.docs || []).find(d => d.cover_i) || null;
+    return item?.cover_i ? `https://covers.openlibrary.org/b/id/${item.cover_i}-L.jpg` : null;
+  } catch { return null; }
+}
+
 function titleSlug(title) {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
 }
@@ -34,7 +47,10 @@ async function syncGoogleBooks() {
   let updated = 0, skipped = 0;
   for (const comic of comics) {
     const result = await searchGoogleBooks(comic.title);
-    const thumb = result ? buildCoverUrl(result) : null;
+    let thumb = result ? buildCoverUrl(result) : null;
+    if (!thumb) {
+      thumb = await searchOpenLibrary(comic.title);
+    }
     if (!thumb) { skipped++; continue; }
 
     // Use a title-slug key so cached covers survive CSV re-imports (new IDs, same title)

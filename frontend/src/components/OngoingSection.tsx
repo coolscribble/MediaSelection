@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { OngoingCategoryDef, OngoingItem, ONGOING_CATEGORIES, AiringInfo } from '../types'
-import { getOngoingItems, addOngoingItem, deleteOngoingItem, syncOngoingAniList, syncOngoingSimkl, updateOngoingProgress } from '../api'
+import { OngoingCategoryDef, OngoingItem, LibraryItem, ONGOING_CATEGORIES, AiringInfo } from '../types'
+import { getOngoingItems, addOngoingItem, deleteOngoingItem, syncOngoingAniList, syncOngoingSimkl, updateOngoingProgress, getLibrary } from '../api'
 import { toast, dismiss } from '../notifications'
 
 function formatAiring(ai: AiringInfo): string {
@@ -24,12 +24,6 @@ function formatAiring(ai: AiringInfo): string {
   return [epPart, nextPart].filter(Boolean).join(' · ')
 }
 
-// An item is still releasing if:
-//   - metadata.status is explicitly "ended"/"canceled" → hide it
-//   - no airing_info and status is unknown → assume active (manually added)
-//   - total_episodes is unknown (ongoing) → show
-//   - next episode is still upcoming → show
-//   - episodes_aired < total_episodes → show
 function isStillReleasing(item: OngoingItem): boolean {
   const status = ((item.metadata?.status as string) || '').toLowerCase()
   if (status === 'ended' || status === 'canceled' || status === 'cancelled') return false
@@ -59,10 +53,12 @@ export default function OngoingSection() {
 function OngoingRow({ category }: { category: OngoingCategoryDef }) {
   const [items, setItems] = useState<OngoingItem[]>([])
   const [adding, setAdding] = useState(false)
-  const [newTitle, setNewTitle] = useState('')
+  const [search, setSearch] = useState('')
   const [syncing, setSyncing] = useState(false)
   const [msg, setMsg] = useState('')
   const [watchedMap, setWatchedMap] = useState<Record<number, number>>({})
+  const [libItems, setLibItems] = useState<LibraryItem[]>([])
+  const [libLoading, setLibLoading] = useState(false)
   const watchedTimers = useRef<Record<number, ReturnType<typeof setTimeout>>>({})
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -76,12 +72,25 @@ function OngoingRow({ category }: { category: OngoingCategoryDef }) {
     }).catch(() => {})
 
   useEffect(() => { load() }, [category.id])
-  useEffect(() => { if (adding) inputRef.current?.focus() }, [adding])
 
-  const handleAdd = async () => {
-    if (!newTitle.trim()) return
-    await addOngoingItem(category.id, newTitle.trim())
-    setNewTitle('')
+  useEffect(() => {
+    if (adding) {
+      inputRef.current?.focus()
+      setLibLoading(true)
+      getLibrary(category.libraryCategory)
+        .then(data => setLibItems(data as LibraryItem[]))
+        .catch(() => {})
+        .finally(() => setLibLoading(false))
+    } else {
+      setSearch('')
+      setLibItems([])
+    }
+  }, [adding, category.libraryCategory])
+
+  const handleAddItem = async (title: string, thumbnail_url?: string | null) => {
+    if (!title.trim()) return
+    await addOngoingItem(category.id, title.trim(), thumbnail_url)
+    setSearch('')
     setAdding(false)
     load()
   }
@@ -128,8 +137,25 @@ function OngoingRow({ category }: { category: OngoingCategoryDef }) {
     }
   }
 
-  // Only show items that are still actively releasing
   const visibleItems = items.filter(isStillReleasing)
+
+  // Filter library items: search on title + romaji_title metadata
+  const q = search.toLowerCase()
+  const filteredLib = libItems.filter(i => {
+    if (!q) return true
+    if (i.title.toLowerCase().includes(q)) return true
+    const romaji = typeof (i.metadata as Record<string, unknown>).romaji_title === 'string'
+      ? ((i.metadata as Record<string, string>).romaji_title).toLowerCase()
+      : ''
+    return romaji.includes(q)
+  })
+
+  // IDs already in the ongoing list — hide them from the picker
+  const existingExtIds = new Set(items.map(i => i.external_id).filter(Boolean))
+  const existingTitles = new Set(items.map(i => i.title.toLowerCase()))
+  const pickableLib = filteredLib.filter(i =>
+    !existingExtIds.has(i.external_id) && !existingTitles.has(i.title.toLowerCase())
+  )
 
   return (
     <div className="ongoing-row">
@@ -151,7 +177,7 @@ function OngoingRow({ category }: { category: OngoingCategoryDef }) {
           onClick={() => setAdding(v => !v)}
           style={{ fontSize: 12, padding: '3px 10px' }}
         >
-          + Add
+          {adding ? '✕ Close' : '+ Add'}
         </button>
         {msg && (
           <span style={{ fontSize: 11, color: msg.startsWith('+') ? 'var(--success)' : 'var(--danger)' }}>
@@ -161,23 +187,48 @@ function OngoingRow({ category }: { category: OngoingCategoryDef }) {
       </div>
 
       {adding && (
-        <div className="ongoing-add-form">
+        <div className="ongoing-add-picker">
           <input
             ref={inputRef}
-            placeholder="Title…"
-            value={newTitle}
-            onChange={e => setNewTitle(e.target.value)}
+            className="ongoing-add-search"
+            placeholder={`Search ${category.label} library…`}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
             onKeyDown={e => {
-              if (e.key === 'Enter') handleAdd()
-              if (e.key === 'Escape') { setAdding(false); setNewTitle('') }
+              if (e.key === 'Escape') { setAdding(false); setSearch('') }
             }}
           />
-          <button className="btn-primary" onClick={handleAdd} style={{ fontSize: 12, padding: '4px 12px' }}>Add</button>
-          <button className="btn-ghost" onClick={() => { setAdding(false); setNewTitle('') }} style={{ fontSize: 12 }}>✕</button>
+          <div className="ongoing-add-list">
+            {libLoading && <div className="ongoing-add-empty">Loading…</div>}
+            {!libLoading && pickableLib.length === 0 && !search && (
+              <div className="ongoing-add-empty">No {category.label} in library — import via CSV first</div>
+            )}
+            {!libLoading && pickableLib.map(item => (
+              <div
+                key={item.id}
+                className="ongoing-add-item"
+                onClick={() => handleAddItem(item.title, item.thumbnail_url)}
+              >
+                {item.thumbnail_url
+                  ? <img src={item.thumbnail_url} alt="" />
+                  : <span className="ongoing-add-item-icon">{category.icon}</span>
+                }
+                <span className="ongoing-add-item-title">{item.title}</span>
+              </div>
+            ))}
+            {!libLoading && search && (
+              <div
+                className="ongoing-add-item ongoing-add-manual"
+                onClick={() => handleAddItem(search)}
+              >
+                <span className="ongoing-add-item-icon">✏️</span>
+                <span className="ongoing-add-item-title">Add "{search}" manually</span>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Tile grid — one card per releasing show/anime/comic/game */}
       <div className="ongoing-tiles">
         {visibleItems.length === 0 && !adding && (
           <span className="ongoing-empty">Nothing currently releasing — add manually or sync</span>
@@ -185,12 +236,10 @@ function OngoingRow({ category }: { category: OngoingCategoryDef }) {
         {visibleItems.map(item => {
           const ai = item.airing_info
           const airingStr = ai ? formatAiring(ai) : ''
-          // episodes_aired = what's currently out; use this as the watched ceiling, not total_episodes
           const episodesAired = ai?.episodes_aired ?? null
           const watched = watchedMap[item.id] ?? 0
           const showProgress = category.id === 'anime_ongoing' || category.id === 'series_ongoing' || category.id === 'manga_ongoing'
           const unit = category.id === 'manga_ongoing' ? 'ch' : 'ep'
-          // Number of episodes out that the user hasn't watched yet
           const behind = showProgress && episodesAired !== null && episodesAired > watched
             ? episodesAired - watched
             : 0

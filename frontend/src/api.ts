@@ -70,8 +70,8 @@ export const importQueueCSV = async (category: string, file: File) => {
 }
 
 export const getOngoingItems = (category: string) => call(`/api/ongoing/${category}`)
-export const addOngoingItem = (category: string, title: string) =>
-  call(`/api/ongoing/${category}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title }) })
+export const addOngoingItem = (category: string, title: string, thumbnail_url?: string | null) =>
+  call(`/api/ongoing/${category}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, ...(thumbnail_url ? { thumbnail_url } : {}) }) })
 export const deleteOngoingItem = (id: number) => call(`/api/ongoing/item/${id}`, { method: 'DELETE' })
 export const syncOngoingAniList = () => call('/api/ongoing/sync/anilist', { method: 'POST' })
 export const syncOngoingSimkl   = () => call('/api/ongoing/sync/simkl',   { method: 'POST' })

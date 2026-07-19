@@ -19,7 +19,15 @@ export default function ManualSelectModal({ slot, onClose, onRefresh }: Props) {
     getLibrary(slot.category).then(setItems).catch(() => setError('Failed to load library'))
   }, [slot.category])
 
-  const filtered = items.filter(i => i.title.toLowerCase().includes(search.toLowerCase()))
+  const filtered = items.filter(i => {
+    const q = search.toLowerCase()
+    if (!q) return true
+    if (i.title.toLowerCase().includes(q)) return true
+    const romaji = typeof (i.metadata as Record<string, unknown>).romaji_title === 'string'
+      ? ((i.metadata as Record<string, string>).romaji_title).toLowerCase()
+      : ''
+    return romaji.includes(q)
+  })
 
   const handleAssign = async () => {
     if (!selected) return
