@@ -6,7 +6,7 @@ const LIST_QUERY = `
 query ($userName: String, $type: MediaType, $status: MediaListStatus) {
   MediaListCollection(userName: $userName, type: $type, status: $status) {
     lists { entries { media {
-      id title { romaji english } coverImage { medium } format
+      id title { romaji english } coverImage { extraLarge large } format
       episodes chapters status
     }}}
   }
@@ -57,12 +57,12 @@ async function syncAniList() {
         if (existing) {
           await db.run(
             'UPDATE library_items SET thumbnail_url = ?, metadata = ? WHERE id = ?',
-            [m.coverImage?.medium || null, metadata, existing.id]
+            [m.coverImage?.extraLarge || m.coverImage?.large || null, metadata, existing.id]
           );
         } else {
           await db.run(
             'INSERT INTO library_items (category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?)',
-            [category, m.title.english || m.title.romaji, String(m.id), m.coverImage?.medium || null, metadata, 'anilist']
+            [category, m.title.english || m.title.romaji, String(m.id), m.coverImage?.extraLarge || m.coverImage?.large || null, metadata, 'anilist']
           );
           type === 'ANIME' ? animeCount++ : mangaCount++;
         }

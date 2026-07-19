@@ -8,7 +8,7 @@ const ANILIST_QUERY = `
 query ($userName: String, $type: MediaType, $status: MediaListStatus) {
   MediaListCollection(userName: $userName, type: $type, status: $status) {
     lists { entries { media {
-      id title { romaji english } coverImage { medium } format
+      id title { romaji english } coverImage { extraLarge large } format
       episodes status
       nextAiringEpisode { airingAt episode }
     }}}
@@ -86,7 +86,7 @@ router.post('/sync/anilist', async (req, res) => {
         } else {
           await db.run(
             'INSERT INTO ongoing_items (category, title, external_id, thumbnail_url, metadata, airing_info, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [category, title, extId, m.coverImage?.medium || null, JSON.stringify({ format: m.format }), airingInfo, 'anilist']
+            [category, title, extId, m.coverImage?.extraLarge || m.coverImage?.large || null, JSON.stringify({ format: m.format }), airingInfo, 'anilist']
           )
           type === 'ANIME' ? animeCount++ : mangaCount++
         }
