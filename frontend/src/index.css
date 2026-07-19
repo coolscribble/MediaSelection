@@ -307,7 +307,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   display: flex;
   flex-direction: column;
   gap: 6px;
-  max-height: 340px;
+  max-height: 52vh;
   overflow-y: auto;
 }
 

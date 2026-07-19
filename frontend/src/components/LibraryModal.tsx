@@ -14,9 +14,8 @@ interface Props {
 const COVER_CATEGORIES: Category[] = ['games', 'albums', 'comics', 'anime', 'manga']
 
 interface CSVPreview {
-  platforms: string[]
-  acquisitionTypes: string[]
-  acquisitionColumn: string | null
+  serviceValues: string[]
+  filterColumns: { column: string; values: string[] }[]
 }
 
 export default function LibraryModal({ category, label, onClose, onRefresh }: Props) {
@@ -104,11 +103,11 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
       try {
         const preview = await previewCSVImport(category, file) as CSVPreview
         setCsvPreview(preview)
-        // default: all acquisition types selected
-        setSelectedAcqTypes(new Set(preview.acquisitionTypes))
+        // default: all service types selected
+        setSelectedAcqTypes(new Set(preview.serviceValues))
       } catch {
         // Fallback: import without filter
-        setCsvPreview({ platforms: [], acquisitionTypes: [], acquisitionColumn: null })
+        setCsvPreview({ serviceValues: [], filterColumns: [] })
       } finally { setPreviewLoading(false) }
     } else {
       // Non-games: import immediately
@@ -128,7 +127,7 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
     if (!csvFile) return
     setBusy(true)
     try {
-      const acqArr = selectedAcqTypes.size > 0 && csvPreview?.acquisitionTypes.length
+      const acqArr = selectedAcqTypes.size > 0 && csvPreview?.serviceValues.length
         ? [...selectedAcqTypes]
         : undefined
       const result = await importCSV(category, csvFile, undefined, acqArr) as { imported: number }
@@ -152,7 +151,7 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 600 }}>
+      <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 760 }}>
         <div className="modal-header">
           <span>📋 Library — {label} ({items.length})</span>
           <button className="btn-ghost" onClick={onClose}>✕</button>
@@ -201,13 +200,13 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
                   <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>
                     Import from: <span style={{ color: 'var(--text2)' }}>{csvFile.name}</span>
                   </div>
-                  {csvPreview && csvPreview.acquisitionTypes.length > 0 ? (
+                  {csvPreview && csvPreview.serviceValues.length > 0 ? (
                     <>
                       <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 8 }}>
-                        Filter by acquisition type (uncheck to skip):
+                        Filter by format / digital service (uncheck to exclude):
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
-                        {csvPreview.acquisitionTypes.map(t => (
+                        {csvPreview.serviceValues.map(t => (
                           <label key={t} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer', background: 'var(--surface)', padding: '4px 10px', borderRadius: 6, border: selectedAcqTypes.has(t) ? '1px solid var(--accent)' : '1px solid var(--border)' }}>
                             <input type="checkbox" checked={selectedAcqTypes.has(t)} onChange={() => toggleAcqType(t)} />
                             {t}
@@ -246,7 +245,7 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
               const artist = category === 'albums' ? (meta.artist as string || '') : ''
               const author = category === 'comics' ? (meta.author as string || '') : ''
               const platform = category === 'games'
-                ? (Array.isArray(meta.platforms) ? (meta.platforms as string[]).join(', ') : (meta.platform as string || ''))
+                ? ((meta.platform as string) || (Array.isArray(meta.platforms) ? (meta.platforms as string[]).slice(0, 2).join(', ') : ''))
                 : ''
               const acqType = category === 'games' ? (meta.acquisition_type as string || '') : ''
               return (
@@ -264,6 +263,7 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
                       {author && <span>· {author}</span>}
                       {acqType && <span style={{ color: 'var(--accent)' }}>· {acqType}</span>}
                       {(meta.status as string) && <span>· {meta.status}</span>}
+                      {meta.is_dlc && <span style={{ color: 'var(--danger)', fontWeight: 600 }}>· DLC</span>}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>

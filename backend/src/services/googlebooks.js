@@ -4,22 +4,37 @@ const { cacheImage } = require('./imageCache');
 const GB_BASE = 'https://www.googleapis.com/books/v1/volumes';
 
 async function searchGoogleBooks(title) {
-  const q = encodeURIComponent(`intitle:${title}`);
-  const r = await fetch(`${GB_BASE}?q=${q}&printType=books&maxResults=5`, {
-    headers: { 'User-Agent': 'MediaPicker/1.0' },
-  });
-  if (!r.ok) return null;
-  const data = await r.json();
-  return (data.items || [])[0] || null;
+  // Try strict intitle: first, then broad search — prefer results that actually have image links
+  for (const q of [encodeURIComponent(`intitle:${title}`), encodeURIComponent(title)]) {
+    try {
+      const r = await fetch(`${GB_BASE}?q=${q}&printType=books&maxResults=8`, {
+        headers: { 'User-Agent': 'MediaPicker/1.0' },
+      });
+      if (!r.ok) continue;
+      const data = await r.json();
+      const items = data.items || [];
+      const withImage = items.find(item => item.volumeInfo?.imageLinks);
+      if (withImage) return withImage;
+    } catch { /* try next */ }
+    await new Promise(res => setTimeout(res, 150));
+  }
+  return null;
 }
 
 function buildCoverUrl(item) {
   const links = item?.volumeInfo?.imageLinks;
   if (!links) return null;
-  const url = links.thumbnail || links.smallThumbnail;
+  // Prefer larger sizes
+  const url = links.extraLarge || links.large || links.medium || links.thumbnail || links.smallThumbnail;
   if (!url) return null;
-  // Upgrade to larger zoom and enforce HTTPS
-  return url.replace('zoom=1', 'zoom=3').replace('&edge=curl', '').replace(/^http:/, 'https:');
+  let resolved = url.replace(/^http:/, 'https:').replace('&edge=curl', '');
+  // Force zoom=3 for best quality (replaces existing zoom param or appends)
+  if (resolved.includes('zoom=')) {
+    resolved = resolved.replace(/zoom=\d/, 'zoom=3');
+  } else {
+    resolved += '&zoom=3';
+  }
+  return resolved;
 }
 
 async function searchOpenLibrary(title) {

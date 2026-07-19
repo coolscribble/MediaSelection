@@ -64,10 +64,10 @@ export default function SlotCard({ slot, queueMode, onRefresh }: Props) {
         )}
         {!isEmpty && slot.category === 'games' && (
           <span className="slot-subtitle">
-            {Array.isArray(slot.metadata?.platforms)
-              ? (slot.metadata.platforms as string[]).slice(0, 2).join(', ')
-              : typeof slot.metadata?.platform === 'string'
-                ? slot.metadata.platform
+            {typeof slot.metadata?.platform === 'string' && slot.metadata.platform
+              ? slot.metadata.platform
+              : Array.isArray(slot.metadata?.platforms)
+                ? (slot.metadata.platforms as string[]).slice(0, 1).join('')
                 : ''}
           </span>
         )}

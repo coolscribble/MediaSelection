@@ -97,37 +97,53 @@ function normalizeComicsTitle(t) {
   return t.replace(/\s*#\d+\b.*$/, '').trim();
 }
 
-// Known acquisition-type values to detect which CSV column holds them
-const ACQUISITION_HINTS = ['physical', 'digital', 'psn', 'steam', 'gog', 'epic', 'xbox', 'nintendo', 'retro achievements', 'ea app', 'ubisoft', 'battlenet', 'humble', 'itch.io', 'game pass', 'ps plus', 'ps now', 'physical copy', 'disc'];
+// Known service/format values to identify filterable columns in the CSV
+const SERVICE_VALUE_SET = new Set([
+  'physical', 'digital', 'disc', 'cartridge', 'physical copy',
+  'psn', 'psn network', 'playstation network', 'playstation store', 'ps store',
+  'steam', 'gog', 'gog galaxy', 'epic', 'epic games', 'epic games store',
+  'xbox', 'xbox game pass', 'game pass', 'gamepass', 'microsoft store',
+  'nintendo', 'nintendo eshop', 'eshop',
+  'retro achievements', 'retroachievements',
+  'ea app', 'ea', 'origin', 'ubisoft', 'ubisoft connect', 'uplay',
+  'amazon', 'amazon games', 'prime gaming',
+  'humble', 'humble bundle', 'itch.io',
+  'battlenet', 'battle.net', 'blizzard',
+  'ps plus', 'ps now', 'playstation plus', 'playstation now',
+]);
 
-function detectAcquisitionColumn(records) {
-  const sample = records.slice(0, 100);
-  const colScores = {};
-  for (const r of sample) {
-    for (const [col, val] of Object.entries(r)) {
-      if (!val) continue;
-      const lv = String(val).toLowerCase();
-      if (ACQUISITION_HINTS.some(h => lv === h || lv.startsWith(h))) {
-        colScores[col] = (colScores[col] || 0) + 1;
-      }
+// Detect ALL columns that contain service/format type values
+// Returns array of { column, values } for each matching column
+function detectServiceColumns(records) {
+  if (!records.length) return [];
+  const allColumns = Object.keys(records[0]);
+  const results = [];
+  for (const col of allColumns) {
+    const vals = [...new Set(records.map(r => (r[col] || '').trim()).filter(Boolean))];
+    if (vals.length === 0 || vals.length > 20) continue;
+    const matchCount = vals.filter(v => {
+      const lv = v.toLowerCase();
+      return SERVICE_VALUE_SET.has(lv) || [...SERVICE_VALUE_SET].some(sv => lv.includes(sv));
+    }).length;
+    if (matchCount > 0) {
+      results.push({ column: col, values: vals.sort() });
     }
   }
-  const sorted = Object.entries(colScores).sort((a, b) => b[1] - a[1]);
-  return sorted[0]?.[0] || null;
+  return results;
 }
 
 async function previewCSV(buffer, category) {
   const records = await parseCSV(buffer);
-  const platforms = [...new Set(records.map(r => r['Platform'] || r['platform'] || '').filter(Boolean))].sort();
-  let acquisitionTypes = [];
-  let acquisitionColumn = null;
-  if (category === 'games') {
-    acquisitionColumn = detectAcquisitionColumn(records);
-    if (acquisitionColumn) {
-      acquisitionTypes = [...new Set(records.map(r => r[acquisitionColumn] || '').filter(Boolean))].sort();
-    }
+
+  if (category !== 'games' || records.length === 0) {
+    return { serviceValues: [], filterColumns: [] };
   }
-  return { platforms, acquisitionTypes, acquisitionColumn };
+
+  const filterColumns = detectServiceColumns(records);
+  // Flat deduplicated list of all service values across all detected columns
+  const serviceValues = [...new Set(filterColumns.flatMap(c => c.values))].sort();
+
+  return { serviceValues, filterColumns };
 }
 
 // Game statuses — shared between importCSV and importQueueCSV
@@ -145,9 +161,11 @@ async function importCSV(buffer, category, options = {}) {
     ? new Set(options.platforms.map(p => p.toLowerCase()))
     : null;
 
-  // Detect acquisition type column once for this batch
-  const acquisitionColumn = options.acquisitionTypes?.length ? detectAcquisitionColumn(records) : null;
-  const acquisitionFilter = options.acquisitionTypes?.length
+  // Detect all service/format columns for multi-column acquisition filter
+  const serviceFilterCols = options.acquisitionTypes?.length
+    ? detectServiceColumns(records).map(c => c.column)
+    : [];
+  const serviceFilter = options.acquisitionTypes?.length
     ? new Set(options.acquisitionTypes.map(t => t.toLowerCase()))
     : null;
 
@@ -167,20 +185,18 @@ async function importCSV(buffer, category, options = {}) {
         continue;
       }
 
-      // Apply platform filter when the user selected specific platforms in the import UI
-      if (platformFilter) {
-        const platform = (r['Platform'] || r['platform'] || '').trim().toLowerCase();
-        if (platform && !platformFilter.has(platform)) continue;
+      // Filter by acquisition type — checks ALL detected service/format columns
+      if (serviceFilterCols.length > 0 && serviceFilter) {
+        const matchesAny = serviceFilterCols.some(col => {
+          const val = (r[col] || '').trim().toLowerCase();
+          return val && serviceFilter.has(val);
+        });
+        if (!matchesAny) continue;
       }
-
-      // Filter by acquisition type (replaces platform filter for source/format filtering)
-      if (acquisitionFilter && acquisitionColumn) {
-        const acqType = (r[acquisitionColumn] || '').toLowerCase().trim();
-        if (acqType && !acquisitionFilter.has(acqType)) continue;
-      }
-      // Inject acquisition type into the record so buildMetadata can pick it up
-      if (acquisitionColumn && r[acquisitionColumn]) {
-        r['_acquisition_type'] = r[acquisitionColumn];
+      // Inject combined service values into record so buildMetadata stores them
+      if (serviceFilterCols.length > 0) {
+        const vals = serviceFilterCols.map(col => (r[col] || '').trim()).filter(Boolean);
+        if (vals.length) r['_acquisition_type'] = vals.join(', ');
       }
     }
 
