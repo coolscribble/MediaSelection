@@ -77,9 +77,12 @@ router.post('/:id/complete', async (req, res) => {
     const slot = await db.get('SELECT * FROM slots WHERE id = ?', [req.params.id]);
     if (!slot) return res.status(404).json({ error: 'Slot not found' });
 
-    if (slot.item_id) await incrementStat(slot.category, slot.current_progress || 0);
+    const completedItemId = slot.item_id;
+    if (completedItemId) await incrementStat(slot.category, slot.current_progress || 0);
 
     await db.run('UPDATE slots SET item_id = NULL, is_locked = 0, note = NULL, current_progress = 0 WHERE id = ?', [req.params.id]);
+
+    if (completedItemId) await db.run('DELETE FROM library_items WHERE id = ?', [completedItemId]);
 
     if (await isQueueMode(slot.category)) {
       const next = await consumeNextQueueItem(slot.category);
