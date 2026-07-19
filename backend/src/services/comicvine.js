@@ -4,6 +4,30 @@ const { cacheImage, titleSlug } = require('./imageCache');
 const BASE = 'https://comicvine.gamespot.com/api';
 const HEADERS = { 'User-Agent': 'MediaPicker/1.0' };
 
+// ComicVine free tier: 200 requests/hour per API key
+const REQUESTS_PER_HOUR = 200;
+const HOUR_MS = 3600 * 1000;
+const RATE_BUFFER = 5;
+let _reqCount = 0;
+let _windowStart = Date.now();
+
+async function waitForRateLimit() {
+  const now = Date.now();
+  const elapsed = now - _windowStart;
+  if (elapsed >= HOUR_MS) {
+    _reqCount = 0;
+    _windowStart = now;
+  }
+  if (_reqCount >= REQUESTS_PER_HOUR - RATE_BUFFER) {
+    const waitMs = HOUR_MS - elapsed + 2000;
+    console.log(`[ComicVine] Rate limit: ${_reqCount} requests used. Pausing ${Math.round(waitMs / 1000)}s for window reset...`);
+    await new Promise(r => setTimeout(r, waitMs));
+    _reqCount = 0;
+    _windowStart = Date.now();
+  }
+  _reqCount++;
+}
+
 async function getApiKey() {
   const row = await db.get('SELECT value FROM settings WHERE key = ?', ['comicvine_api_key']);
   if (!row?.value) throw new Error('ComicVine API key not configured in Settings');
@@ -42,6 +66,7 @@ async function searchVolume(title, apiKey) {
   const { baseName, startYear } = parseComicTitle(title);
   const q = encodeURIComponent(baseName);
   const url = `${BASE}/search/?api_key=${apiKey}&query=${q}&resources=volume&format=json&field_list=id,name,image,start_year,count_of_issues&limit=10`;
+  await waitForRateLimit();
   const r = await fetch(url, { headers: HEADERS });
   if (r.status === 401 || r.status === 403) throw new Error('ComicVine API key is invalid — please re-enter it in Settings');
   if (!r.ok) return { result: null, confident: false, candidates: [] };
@@ -77,6 +102,7 @@ async function searchVolume(title, apiKey) {
 // Direct lookup by ComicVine volume ID (stored as external_id)
 async function lookupById(cvId, apiKey) {
   const url = `${BASE}/volume/4050-${cvId}/?api_key=${apiKey}&format=json&field_list=id,name,image,start_year`;
+  await waitForRateLimit();
   const r = await fetch(url, { headers: HEADERS });
   if (r.status === 401 || r.status === 403) throw new Error('ComicVine API key is invalid — please re-enter it in Settings');
   if (!r.ok) return null;
@@ -89,9 +115,10 @@ async function lookupById(cvId, apiKey) {
 async function syncComicVine({ itemId } = {}) {
   const apiKey = await getApiKey();
 
+  // Bulk sync only processes items with no cover yet; single-item always runs
   const query = itemId
     ? "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'comics' AND id = ?"
-    : "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'comics'";
+    : "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'comics' AND (thumbnail_url IS NULL OR thumbnail_url = '')";
   const comics = itemId ? await db.all(query, [itemId]) : await db.all(query);
 
   let updated = 0, skipped = 0, needsReview = 0;
@@ -128,9 +155,6 @@ async function syncComicVine({ itemId } = {}) {
       [localThumb ?? comic.thumbnail_url, JSON.stringify(merged), String(result.id), comic.id]
     );
     updated++;
-
-    // ComicVine free tier: ~200 req/hour — 500ms stays well within limit
-    await new Promise(res => setTimeout(res, 500));
   }
 
   return { updated, skipped, needsReview };
