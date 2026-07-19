@@ -51,6 +51,22 @@ router.post('/login', async (req, res) => {
   }
 });
 
+router.post('/local', async (req, res) => {
+  const userId = 'local';
+  try {
+    await db.run(
+      'INSERT OR IGNORE INTO users (username, server_url) VALUES (?, ?)',
+      [userId, '']
+    );
+    await ensureUserSlots(userId);
+    const token = crypto.randomUUID();
+    await db.run('INSERT INTO sessions (token, user_id) VALUES (?, ?)', [token, userId]);
+    res.json({ token, userId, username: 'local' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 router.get('/me', async (req, res) => {
   const auth = req.headers.authorization;
   if (!auth?.startsWith('Bearer ')) return res.status(401).json({ error: 'Not authenticated' });

@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { login } from '../api'
+import { login, loginLocal } from '../api'
 import { User } from '../types'
 
 interface Props {
@@ -105,8 +105,39 @@ export default function LoginPage({ onLogin }: Props) {
           disabled={busy}
           style={{ marginTop: 4 }}
         >
-          {busy ? 'Signing in…' : 'Sign in'}
+          {busy ? 'Signing in…' : 'Sign in with Jellyfin'}
         </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0' }}>
+          <hr style={{ flex: 1, border: 'none', borderTop: '1px solid var(--border)' }} />
+          <span style={{ color: 'var(--text2)', fontSize: 12 }}>or</span>
+          <hr style={{ flex: 1, border: 'none', borderTop: '1px solid var(--border)' }} />
+        </div>
+
+        <button
+          type="button"
+          className="btn-ghost"
+          disabled={busy}
+          style={{ width: '100%' }}
+          onClick={async () => {
+            setBusy(true)
+            setError(null)
+            try {
+              const data = await loginLocal()
+              onLogin(data.token, { username: data.username, server_url: '' })
+            } catch (e: unknown) {
+              setError(e instanceof Error ? e.message : 'Login failed')
+            } finally {
+              setBusy(false)
+            }
+          }}
+        >
+          Continue without Jellyfin
+        </button>
+
+        <p style={{ margin: 0, textAlign: 'center', color: 'var(--text2)', fontSize: 11 }}>
+          Your data is saved locally under a shared "local" account
+        </p>
       </form>
     </div>
   )
