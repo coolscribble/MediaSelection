@@ -10,12 +10,15 @@ MediaPicker is a self-hosted backlog manager and randomizer for people who can n
 
 ## Features
 
+### 🔐 Authentication
+Sign in with your **Jellyfin** account (enter your server URL, username, and password) or click **Continue without Jellyfin** to use a persistent local account — no Jellyfin installation required. Each Jellyfin user gets their own separate library, queue, slots, and settings. The local option stores data under a shared `local` account.
+
 ### 🎰 Slot randomizer
 Each category has three slots filled randomly from your library. Per slot you can:
 - **🔒 Lock** — keep the current item while rerolling the others
 - **🎲 Reroll** — swap it for something else from the library
 - **🔍 Pick manually** — search and assign a specific item from your library
-- **✓ Mark done** — sends the item to the finish counter and immediately draws the next one
+- **✓ Mark done** — sends the item to the finish counter and immediately draws the next one. The item and its cover file are deleted automatically.
 - **Progress tracking** — anime, manga, series, and comics slots have an episode/chapter counter you can increment or type into directly
 - **Notes** — a text field per slot for reminders or thoughts
 
@@ -38,19 +41,16 @@ A stats bar always visible at the top shows how many items you have finished in 
 |---|---|---|
 | 🎮 Games | IGDB via Twitch | Yes — free at dev.twitch.tv |
 | 💬 Comics | ComicVine | Yes — free at comicvine.gamespot.com/api |
-| 🎵 Albums | iTunes Search API | No |
+| 🎵 Albums | MusicBrainz / Deezer / iTunes | No |
+| ⛩️ Anime / 📚 Manga | AniList (on sync) | No |
+| 🎬 Movies / 📺 Series | Simkl (on sync) | No |
 
-Movies, series, anime, and manga covers come from Simkl / AniList during sync.
+Cover files are stored locally in your data folder and deleted automatically when the library item is removed.
 
-### 📥 CSV import
-Import your entire backlog from exports of tracking sites. The importer handles:
-- **Games**: InfiniteBacklog / Backloggery exports. Skips `Completed` and `Beaten` rows. After picking the file, platform checkboxes appear so you can select only the platforms you want before the rows are written to the database.
-- **Comics**: CLZ / ComicBase exports. Strips issue numbers (`#1`, `#12` …) and deduplicates to one row per series. Skips already-read issues (`Marked Read = 1`).
-- **Albums**: Any CSV with `Artist`, `Album`, and `Year` columns (e.g. RateYourMusic exports).
-- **Everything else**: any CSV with a `Title` or `Name` column. Optional: `thumbnail`, `Platform`, `Status`.
+ComicVine is rate-limited to 200 requests/hour on the free tier. The sync automatically pauses and resumes when the limit is reached, and skips items that already have a cover.
 
 ### 🗑️ Clear library
-Each category header has a **🗑** button. First click turns it red showing **⚠ Sure?** — click again within three seconds to wipe the entire library for that category. Slots are cleared automatically. The button resets on its own if you change your mind.
+Each category header has a **🗑** button. First click turns it red showing **⚠ Sure?** — click again within three seconds to wipe the entire library for that category. Cover files for removed items are deleted from disk. Slots are cleared automatically.
 
 ### 🔔 Toast notifications
 Bottom-left notifications show what is happening (syncing, importing, fetching covers) and confirm when it finishes or fails.
@@ -66,6 +66,7 @@ Bottom-left notifications show what is happening (syncing, importing, fetching c
 | Database | SQLite via libsql (`@libsql/client`) |
 | Container | Docker + Docker Compose |
 | Image registry | GitHub Container Registry (GHCR) |
+| Auth | Jellyfin (`/Users/AuthenticateByName`) or local account |
 
 ---
 
@@ -73,7 +74,7 @@ Bottom-left notifications show what is happening (syncing, importing, fetching c
 
 ### Prerequisites
 - Docker Desktop
-- A folder on your machine for persistent data (the database lives here between restarts)
+- A folder on your machine for persistent data (the database and cover images live here)
 
 ### docker-compose.yml
 
@@ -94,7 +95,7 @@ Replace `/your/data/path` with an absolute path to a folder on your machine, the
 docker compose up -d
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open [http://localhost:3000](http://localhost:3000). You will be prompted to log in.
 
 ### Building from source
 
@@ -122,38 +123,38 @@ No API key required. Enter your MAL username in **Settings → Connections**. Pr
 ### IGDB (game covers)
 1. Register a free app at [dev.twitch.tv/console](https://dev.twitch.tv/console).
 2. Paste the **Client ID** and **Client Secret** in **Settings → Connections → IGDB**.
-3. Click **🎮 Covers** in the header to fetch cover art for all games in your library. Uses your CSV's IGDB ID column for exact matching when available, falls back to title search.
+3. Click **🖼 Covers → Games** in the header to fetch cover art for all games in your library.
 
 ### ComicVine (comic covers)
 1. Get a free API key at [comicvine.gamespot.com/api](https://comicvine.gamespot.com/api/).
 2. Paste it in **Settings → Connections → ComicVine**.
-3. Click **💬 Covers** to fetch volume cover art.
+3. Click **🖼 Covers → Comics** in the header.
+4. The free tier allows 200 requests/hour. The sync pauses automatically when the limit is close and resumes after the window resets. Items that already have a cover are skipped.
 
-### iTunes / Albums
-No configuration needed. Click **🎵 Covers** after importing albums and artwork is fetched automatically from the iTunes Search API using the artist and album name from your CSV.
-
-### ⟳ Update
-The **⟳ Update** button in the header refreshes episode counts and airing dates from AniList and Simkl for everything in your library, and re-runs IGDB cover sync if credentials are configured.
+### iTunes / Deezer / MusicBrainz (album covers)
+No configuration needed. Click **🖼 Covers → Albums** and artwork is fetched automatically.
 
 ---
 
-## CSV import formats
+## CSV import
+
+CSV import is available per category in **Settings → Import**. Covers are preserved across re-imports — if a cached cover exists for an item, it is reused without re-downloading.
 
 ### Games (InfiniteBacklog)
 ```
 IGDB ID,Game name,Game release date,...,Platform,Type,Status,Completion,...
 315367,"LEGO Harry Potter Collection",2024-10-08,...,PlayStation 5,,Playing,Unfinished,...
 ```
-Rows with `Completion = Completed` or `Beaten` are skipped **unless** the `Status` column says `Playing` (e.g. you are replaying a finished game). The filter is case-insensitive. After picking the file a platform picker appears — uncheck any platforms you don't want to import.
+Rows with `Completion = Completed` or `Beaten` are skipped unless the `Status` column says `Playing`. After picking the file a platform picker appears — uncheck platforms you don't want to import. You can also filter by acquisition type (Steam, PSN, Physical, etc.) if the CSV has that column.
 
 ### Comics (CLZ / ComicBase)
 ```
 Publisher Name,Series Name,Full Title,Release Date,Marked Read,...
 Marvel,Spider-Man,Spider-Man #1,1990-08-01,0,...
 ```
-`Marked Read = 1` rows are skipped. Issue numbers are stripped and series names deduplicated so each volume appears once regardless of how many issues are in the export.
+`Marked Read = 1` rows are skipped. Issue numbers are stripped and series deduplicated so each volume appears once.
 
-### Albums
+### Albums (RateYourMusic / generic)
 ```
 Artist,Album,Year
 Charli XCX,BRAT,2024
@@ -161,15 +162,16 @@ slowthai,UGLY,2023
 ```
 
 ### Everything else
-Any CSV with a `Title` or `Name` column. Optional extras: `thumbnail`, `Platform`, `Status`.
+Any CSV with a `Title` or `Name` column. Optional: `thumbnail`, `Platform`, `Status`.
 
 ---
 
 ## Known limitations
 
-- Simkl does not return per-episode counts from its API, only airing status. The **👁 watched** counter in Currently Releasing works, but won't show a `/total` denominator for Simkl-sourced shows.
-- ComicVine search matches on series title only. Generic names (e.g. "Batman") will match the most popular result, which may not be the exact volume you mean.
-- iTunes cover search works best when both artist and album name are present in the CSV.
+- **⟳ Update** button in the header is a work in progress — it runs but results may be incomplete.
+- Simkl does not return per-episode counts from its API, only airing status. The watched counter in Currently Releasing works but won't show a `/total` denominator for Simkl-sourced shows.
+- ComicVine search matches on series title only. Generic names like "Batman" will match the most popular result, which may not be the exact volume you mean.
+- The `local` account is shared — if multiple people use the same instance without Jellyfin they will share the same data.
 
 ---
 
