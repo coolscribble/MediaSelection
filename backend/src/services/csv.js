@@ -168,12 +168,21 @@ async function importCSV(buffer, category, options = {}) {
     : null;
 
   // Detect all service/format columns for multi-column acquisition filter
-  const serviceFilterCols = options.acquisitionTypes?.length
-    ? detectServiceColumns(records).map(c => c.column)
-    : [];
+  const detectedSvcCols = options.acquisitionTypes?.length ? detectServiceColumns(records) : [];
+  const serviceFilterCols = detectedSvcCols.map(c => c.column);
   const serviceFilter = options.acquisitionTypes?.length
     ? new Set(options.acquisitionTypes.map(t => t.toLowerCase()))
     : null;
+
+  if (category === 'games') {
+    const headerSample = records.length ? Object.keys(records[0]).slice(0, 12).join(' | ') : '(no records)';
+    console.log(`[csv] games import: ${records.length} records, headers: ${headerSample}`);
+    if (serviceFilter) {
+      console.log(`[csv] service filter active: cols=[${serviceFilterCols.join(', ')}] values=[${[...serviceFilter].join(', ')}]`);
+    } else {
+      console.log('[csv] no service filter — importing all status-matching games');
+    }
+  }
 
   for (const r of records) {
     // InfiniteBacklog exports a "Status" column (Playing/Completed/…) and a separate
@@ -186,8 +195,10 @@ async function importCSV(buffer, category, options = {}) {
       const explicitInclude = GAME_INCLUDE.has(completion) || GAME_INCLUDE.has(status);
       const explicitSkip    = GAME_SKIP.has(completion) && !GAME_INCLUDE.has(status);
 
+      const _gameTitle = r['Game name'] || r['Game Name'] || r['game name'] || r['title'] || '(unknown)';
+
       if (explicitSkip && !explicitInclude) {
-        console.log(`[csv] skip game (done): "${r['Game name'] || r['Game Name'] || r['title']}" completion="${completion}" status="${status}"`);
+        console.log(`[csv] SKIP (done): "${_gameTitle}" completion="${completion}" status="${status}"`);
         continue;
       }
 
@@ -195,6 +206,7 @@ async function importCSV(buffer, category, options = {}) {
       // Games whose only acquisition value is a generic "digital" label (no specific
       // service or format) are always included — they can't be categorised further.
       if (serviceFilterCols.length > 0 && serviceFilter) {
+        const colVals = serviceFilterCols.map(col => `${col}="${(r[col] || '').trim()}"`).join(' ');
         const matchesSpecific = serviceFilterCols.some(col => {
           const val = (r[col] || '').trim().toLowerCase();
           return val && serviceFilter.has(val);
@@ -204,7 +216,11 @@ async function importCSV(buffer, category, options = {}) {
             const val = (r[col] || '').trim().toLowerCase();
             return !val || GENERIC_DIGITAL.has(val);
           });
-          if (!allGenericOrEmpty) continue;
+          if (!allGenericOrEmpty) {
+            console.log(`[csv] SKIP (service filter): "${_gameTitle}" ${colVals}`);
+            continue;
+          }
+          console.log(`[csv] PASS (generic/empty): "${_gameTitle}" ${colVals}`);
         }
       }
       // Inject combined service values into record so buildMetadata stores them
@@ -252,13 +268,19 @@ async function importCSV(buffer, category, options = {}) {
             "SELECT id FROM library_items WHERE category = 'games' AND external_id = ?",
             [extId]
           );
-          if (dbDup) continue;
+          if (dbDup) {
+            console.log(`[csv] SKIP (already in library, extId=${extId}): "${title}"`);
+            continue;
+          }
         } else {
           const dbDup = await db.get(
             "SELECT id FROM library_items WHERE category = 'games' AND LOWER(title) = LOWER(?)",
             [title]
           );
-          if (dbDup) continue;
+          if (dbDup) {
+            console.log(`[csv] SKIP (already in library, title match): "${title}"`);
+            continue;
+          }
         }
       }
     }
