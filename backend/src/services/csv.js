@@ -98,9 +98,13 @@ function normalizeComicsTitle(t) {
   return t.replace(/\s*#\d+\b.*$/, '').trim();
 }
 
+// Generic "digital" labels — never shown as filter options; games with only these values
+// are always imported regardless of the service filter (can't be categorised further).
+const GENERIC_DIGITAL = new Set(['digital', 'download', 'digital copy', 'downloadable']);
+
 // Known service/format values to identify filterable columns in the CSV
 const SERVICE_VALUE_SET = new Set([
-  'physical', 'digital', 'disc', 'cartridge', 'physical copy',
+  'physical', 'disc', 'cartridge', 'physical copy',
   'psn', 'psn network', 'playstation network', 'playstation store', 'ps store',
   'steam', 'gog', 'gog galaxy', 'epic', 'epic games', 'epic games store',
   'xbox', 'xbox game pass', 'game pass', 'gamepass', 'microsoft store',
@@ -187,13 +191,21 @@ async function importCSV(buffer, category, options = {}) {
         continue;
       }
 
-      // Filter by acquisition type — checks ALL detected service/format columns
+      // Filter by acquisition type — checks ALL detected service/format columns.
+      // Games whose only acquisition value is a generic "digital" label (no specific
+      // service or format) are always included — they can't be categorised further.
       if (serviceFilterCols.length > 0 && serviceFilter) {
-        const matchesAny = serviceFilterCols.some(col => {
+        const matchesSpecific = serviceFilterCols.some(col => {
           const val = (r[col] || '').trim().toLowerCase();
           return val && serviceFilter.has(val);
         });
-        if (!matchesAny) continue;
+        if (!matchesSpecific) {
+          const allGenericOrEmpty = serviceFilterCols.every(col => {
+            const val = (r[col] || '').trim().toLowerCase();
+            return !val || GENERIC_DIGITAL.has(val);
+          });
+          if (!allGenericOrEmpty) continue;
+        }
       }
       // Inject combined service values into record so buildMetadata stores them
       if (serviceFilterCols.length > 0) {
