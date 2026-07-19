@@ -9,8 +9,9 @@ function titleSlug(title) {
   return (title || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
 }
 
-async function isCachingEnabled() {
-  const row = await db.get('SELECT value FROM settings WHERE key = ?', ['save_covers_locally']);
+async function isCachingEnabled(userId) {
+  if (!userId) return false;
+  const row = await db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [userId, 'save_covers_locally']);
   return row?.value === 'true';
 }
 
@@ -45,9 +46,9 @@ function checkCachedCover(category, key) {
 // category: 'games' | 'albums' | 'comics' | 'anime' | 'manga' | 'series' | 'movies'
 // key: stable identifier, e.g. 'igdb_211243', 'anilist_12345', 'spider-man'
 // If a cached file already exists for the key, returns the local URL immediately — no re-download.
-async function cacheImage(category, key, remoteUrl) {
+async function cacheImage(category, key, remoteUrl, userId) {
   if (!remoteUrl) return remoteUrl;
-  if (!await isCachingEnabled()) return remoteUrl;
+  if (!await isCachingEnabled(userId)) return remoteUrl;
 
   const subdir = path.join(COVERS_DIR, category);
 

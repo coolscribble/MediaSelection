@@ -1,18 +1,28 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const cookieParser = require('cookie-parser');
 const path = require('path');
 const fs = require('fs');
-const { init } = require('./database');
+const { init, cleanExpiredSessions } = require('./database');
 const { migrateCovers } = require('./services/imageCache');
 const { requireAuth } = require('./middleware/auth');
 
 const app = express();
-app.use(cors());
+
+// Security headers
+app.use(helmet());
+
+// CORS — restrict to configured origin; credentials required for httpOnly cookies
+const allowedOrigin = process.env.ALLOWED_ORIGIN || 'http://localhost:5173';
+app.use(cors({ origin: allowedOrigin, credentials: true }));
+
+app.use(cookieParser());
 app.use(express.json());
 
 // Public routes — no auth required
 app.use('/api/auth', require('./routes/auth'));
-app.use('/api/covers', require('./routes/covers')); // images loaded via <img src>, can't send Bearer
+app.use('/api/covers', require('./routes/covers')); // <img src> can't send credentials
 
 // Protected routes — all require a valid session token
 const api = express.Router();
@@ -37,6 +47,9 @@ const PORT = process.env.PORT || 3000;
 
 init().then(async () => {
   await migrateCovers();
+  // Prune expired sessions on startup, then every hour
+  await cleanExpiredSessions();
+  setInterval(cleanExpiredSessions, 60 * 60 * 1000);
   app.listen(PORT, () => console.log(`MediaPicker on http://localhost:${PORT}`));
 }).catch(err => {
   console.error('DB init failed:', err);

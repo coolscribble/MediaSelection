@@ -21,6 +21,9 @@ router.get('/simkl/pin', async (req, res) => {
 });
 
 router.get('/simkl/pin/:usercode', async (req, res) => {
+  if (!/^[A-Z0-9]{4,12}$/i.test(req.params.usercode)) {
+    return res.status(400).json({ error: 'Invalid PIN code format' });
+  }
   try {
     const row = await db.get(
       'SELECT value FROM settings WHERE user_id = ? AND key = ?',

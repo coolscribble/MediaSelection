@@ -57,7 +57,8 @@ async function migrateToMultiUser() {
   await db.run(`CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
-    created_at INTEGER DEFAULT (strftime('%s', 'now'))
+    created_at INTEGER DEFAULT (strftime('%s', 'now')),
+    expires_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') + 2592000)
   )`);
 
   try { await db.run("ALTER TABLE library_items ADD COLUMN user_id TEXT NOT NULL DEFAULT 'lilcipra'") } catch {}
@@ -111,7 +112,16 @@ async function migrateToMultiUser() {
     console.log('[db] Existing data assigned to user: lilcipra');
   }
 
+  // Add expires_at to sessions if table already existed without it
+  try { await db.run("ALTER TABLE sessions ADD COLUMN expires_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now') + 2592000)") } catch {}
+
   console.log('[db] Multi-user migration complete');
+}
+
+async function cleanExpiredSessions() {
+  const now = Math.floor(Date.now() / 1000);
+  const r = await db.run('DELETE FROM sessions WHERE expires_at < ?', [now]);
+  if (r.changes > 0) console.log(`[db] Pruned ${r.changes} expired session(s)`);
 }
 
 async function init() {
@@ -177,4 +187,4 @@ async function init() {
   await migrateToMultiUser();
 }
 
-module.exports = { db, init, ensureUserSlots };
+module.exports = { db, init, ensureUserSlots, cleanExpiredSessions };

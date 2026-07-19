@@ -3,7 +3,7 @@ import { login, loginLocal } from '../api'
 import { User } from '../types'
 
 interface Props {
-  onLogin: (token: string, user: User) => void
+  onLogin: (user: User) => void
 }
 
 export default function LoginPage({ onLogin }: Props) {
@@ -23,7 +23,7 @@ export default function LoginPage({ onLogin }: Props) {
     setError(null)
     try {
       const data = await login(serverUrl.trim(), username.trim(), password)
-      onLogin(data.token, { username: data.username, server_url: serverUrl.trim() })
+      onLogin({ username: data.username, server_url: serverUrl.trim() })
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Login failed')
     } finally {
@@ -124,7 +124,7 @@ export default function LoginPage({ onLogin }: Props) {
             setError(null)
             try {
               const data = await loginLocal()
-              onLogin(data.token, { username: data.username, server_url: '' })
+              onLogin({ username: data.username, server_url: '' })
             } catch (e: unknown) {
               setError(e instanceof Error ? e.message : 'Login failed')
             } finally {

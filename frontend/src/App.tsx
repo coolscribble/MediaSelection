@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { CATEGORIES, CATEGORY_LABELS, CATEGORY_ICONS, SlotsData, Settings, User } from './types'
-import { getSlots, getSettings, getStats, updateMetadata, refreshCategoryCovers, getMe, logout, clearToken, setToken } from './api'
+import { getSlots, getSettings, getStats, updateMetadata, refreshCategoryCovers, getMe, logout } from './api'
 import { toast, dismiss } from './notifications'
 import CategorySection from './components/CategorySection'
 import SettingsModal from './components/SettingsModal'
@@ -37,14 +37,12 @@ export default function App() {
       .catch(() => { setUser(null); setAuthChecked(true) })
   }, [])
 
-  const handleLogin = (token: string, u: User) => {
-    setToken(token)
+  const handleLogin = (u: User) => {
     setUser(u)
   }
 
   const handleLogout = async () => {
     try { await logout() } catch { /* ignore */ }
-    clearToken()
     setUser(null)
     setSlots(null)
     setSettings(null)

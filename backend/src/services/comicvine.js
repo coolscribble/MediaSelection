@@ -133,7 +133,7 @@ async function syncComicVine({ userId, itemId } = {}) {
     if (!result) { skipped++; continue; }
 
     const thumb = buildCoverUrl(result.image);
-    const localThumb = thumb ? await cacheImage('comics', titleSlug(comic.title), thumb) : thumb;
+    const localThumb = thumb ? await cacheImage('comics', titleSlug(comic.title), thumb, userId) : thumb;
 
     const merged = { ...meta, comicvine_id: result.id };
     if (!confident) {

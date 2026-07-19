@@ -95,7 +95,7 @@ async function syncGoogleBooks({ userId, itemId } = {}) {
     if (!thumb) thumb = await searchInternetArchive(comic.title);
     if (!thumb) { skipped++; continue; }
 
-    const localThumb = await cacheImage('comics', titleSlug(comic.title), thumb);
+    const localThumb = await cacheImage('comics', titleSlug(comic.title), thumb, userId);
     const meta = JSON.parse(comic.metadata || '{}');
     const vi = result?.volumeInfo || {};
     const merged = {

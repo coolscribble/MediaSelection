@@ -61,7 +61,7 @@ async function syncAniList(userId) {
 
         const remoteThumb = m.coverImage?.extraLarge || m.coverImage?.large || null;
         const localThumb = remoteThumb
-          ? await cacheImage(category, `anilist_${m.id}`, remoteThumb)
+          ? await cacheImage(category, `anilist_${m.id}`, remoteThumb, userId)
           : null;
 
         const existing = await db.get(

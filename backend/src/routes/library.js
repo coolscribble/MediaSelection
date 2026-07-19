@@ -16,7 +16,20 @@ async function deleteLocalCover(url) {
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
+const VALID_CATEGORIES = new Set(['movies', 'series', 'anime', 'manga', 'games', 'comics', 'albums']);
+
+function detectImageType(buf) {
+  if (!buf || buf.length < 12) return null;
+  if (buf[0] === 0xFF && buf[1] === 0xD8 && buf[2] === 0xFF) return 'jpg';
+  if (buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4E && buf[3] === 0x47) return 'png';
+  if (buf[0] === 0x47 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x38) return 'gif';
+  if (buf[0] === 0x52 && buf[1] === 0x49 && buf[2] === 0x46 && buf[3] === 0x46 &&
+      buf[8] === 0x57 && buf[9] === 0x45 && buf[10] === 0x42 && buf[11] === 0x50) return 'webp';
+  return null;
+}
+
 router.get('/:category', async (req, res) => {
+  if (!VALID_CATEGORIES.has(req.params.category)) return res.status(400).json({ error: 'Invalid category' });
   try {
     const items = await db.all(
       'SELECT * FROM library_items WHERE user_id = ? AND category = ? ORDER BY title',
@@ -27,6 +40,7 @@ router.get('/:category', async (req, res) => {
 });
 
 router.post('/:category', async (req, res) => {
+  if (!VALID_CATEGORIES.has(req.params.category)) return res.status(400).json({ error: 'Invalid category' });
   try {
     const { title, thumbnail_url, external_id, metadata } = req.body;
     if (!title?.trim()) return res.status(400).json({ error: 'Title is required' });
@@ -39,6 +53,7 @@ router.post('/:category', async (req, res) => {
 });
 
 router.delete('/clear/:category', async (req, res) => {
+  if (!VALID_CATEGORIES.has(req.params.category)) return res.status(400).json({ error: 'Invalid category' });
   try {
     const covers = await db.all(
       'SELECT thumbnail_url FROM library_items WHERE user_id = ? AND category = ? AND thumbnail_url LIKE ?',
@@ -92,8 +107,8 @@ router.post('/:id/cover', upload.single('file'), async (req, res) => {
     if (!item) return res.status(404).json({ error: 'Item not found' });
     const subdir = path.join(COVERS_DIR, item.category);
     if (!fs.existsSync(subdir)) fs.mkdirSync(subdir, { recursive: true });
-    const mime = req.file.mimetype || '';
-    const ext = mime.includes('png') ? 'png' : mime.includes('webp') ? 'webp' : mime.includes('gif') ? 'gif' : 'jpg';
+    const ext = detectImageType(req.file.buffer);
+    if (!ext) return res.status(400).json({ error: 'File must be a valid image (JPEG, PNG, WebP, or GIF)' });
     const filename = `${titleSlug(item.title)}.${ext}`;
     fs.writeFileSync(path.join(subdir, filename), req.file.buffer);
     const localUrl = `/api/covers/${item.category}/${filename}`;

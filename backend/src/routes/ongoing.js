@@ -35,7 +35,10 @@ function buildAiringInfo(m) {
   return null
 }
 
+const VALID_ONGOING = new Set(['series_ongoing', 'anime_ongoing', 'manga_ongoing', 'comics_ongoing', 'games_continuous'])
+
 router.get('/:category', async (req, res) => {
+  if (!VALID_ONGOING.has(req.params.category)) return res.status(400).json({ error: 'Invalid category' })
   try {
     const items = await db.all(
       'SELECT * FROM ongoing_items WHERE user_id = ? AND category = ? ORDER BY created_at ASC',
@@ -184,6 +187,7 @@ router.post('/sync/simkl', async (req, res) => {
 })
 
 router.post('/:category', async (req, res) => {
+  if (!VALID_ONGOING.has(req.params.category)) return res.status(400).json({ error: 'Invalid category' })
   const { title, thumbnail_url } = req.body
   if (!title?.trim()) return res.status(400).json({ error: 'Title is required' })
   try {

@@ -125,7 +125,7 @@ async function syncAOTY({ userId, itemId } = {}) {
     if (!thumb || !stableKey) stableKey = `album_${titleSlug(album.title)}`;
     if (!thumb) { skipped++; continue; }
 
-    const localThumb = await cacheImage('albums', stableKey, thumb);
+    const localThumb = await cacheImage('albums', stableKey, thumb, userId);
     const extId = merged.itunes_id ? String(merged.itunes_id)
       : merged.deezer_id ? String(merged.deezer_id)
       : merged.mb_id ? String(merged.mb_id)

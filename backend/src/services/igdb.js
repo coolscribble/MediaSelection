@@ -115,7 +115,7 @@ async function syncIGDB({ userId, itemId } = {}) {
     const merged = { ...existingMeta, ...igdbMeta };
 
     if (thumb) {
-      const localThumb = await cacheImage('games', `igdb_${result.id}`, thumb);
+      const localThumb = await cacheImage('games', `igdb_${result.id}`, thumb, userId);
       await db.run(
         'UPDATE library_items SET thumbnail_url = ?, metadata = ?, external_id = ? WHERE id = ?',
         [localThumb, JSON.stringify(merged), String(result.id), game.id]

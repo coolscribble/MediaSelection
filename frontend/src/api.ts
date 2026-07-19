@@ -1,32 +1,10 @@
-const TOKEN_KEY = 'mp_token'
-
-function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY)
-}
-
-export function setToken(token: string) {
-  localStorage.setItem(TOKEN_KEY, token)
-}
-
-export function clearToken() {
-  localStorage.removeItem(TOKEN_KEY)
-}
-
 async function call(url: string, opts?: RequestInit) {
-  const token = getToken()
-  const headers: Record<string, string> = {
-    ...(opts?.headers as Record<string, string> | undefined),
-  }
-  if (token) headers['Authorization'] = `Bearer ${token}`
-
-  const res = await fetch(url, { ...opts, headers })
+  const res = await fetch(url, { ...opts, credentials: 'include' })
 
   if (res.status === 401) {
-    if (token) {
-      clearToken()
-      window.location.reload()
-    }
-    throw new Error('Session expired')
+    // Session expired or not authenticated — reload to show the login page
+    window.location.reload()
+    throw new Error('Not authenticated')
   }
 
   if (!res.ok) {
@@ -41,19 +19,25 @@ async function call(url: string, opts?: RequestInit) {
 export const login = (serverUrl: string, username: string, password: string) =>
   fetch('/api/auth/login', {
     method: 'POST',
+    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ serverUrl, username, password }),
   }).then(async res => {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-    return data as { token: string; username: string }
+    return data as { username: string }
   })
 
-export const loginLocal = () =>
-  fetch('/api/auth/local', { method: 'POST' }).then(async res => {
+export const loginLocal = (passcode?: string) =>
+  fetch('/api/auth/local', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(passcode ? { passcode } : {}),
+  }).then(async res => {
     const data = await res.json().catch(() => ({}))
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
-    return data as { token: string; username: string }
+    return data as { username: string }
   })
 
 export const getMe = () => call('/api/auth/me')
@@ -87,13 +71,7 @@ export const updateLibraryItemCover = (id: number, thumbnail_url: string, clear_
 export const uploadLibraryItemCover = async (id: number, file: File) => {
   const form = new FormData()
   form.append('file', file)
-  const token = getToken()
-  const headers: Record<string, string> = {}
-  if (token) headers['Authorization'] = `Bearer ${token}`
-  const res = await fetch(`/api/library/${id}/cover`, { method: 'POST', headers, body: form })
-  if (res.status === 401) { if (token) { clearToken(); window.location.reload() }; throw new Error('Session expired') }
-  if (!res.ok) { const err = await res.json().catch(() => ({})) as { error?: string }; throw new Error(err.error || `HTTP ${res.status}`) }
-  return res.json()
+  return call(`/api/library/${id}/cover`, { method: 'POST', body: form })
 }
 
 // --- Settings ---
@@ -127,13 +105,7 @@ export const importCSV = async (category: string, file: File, platforms?: string
   if (platforms && platforms.length > 0) form.append('platforms', JSON.stringify(platforms))
   if (acquisitionTypes && acquisitionTypes.length > 0) form.append('acquisitionTypes', JSON.stringify(acquisitionTypes))
   if (retro) form.append('retro', 'true')
-  const token = getToken()
-  const headers: Record<string, string> = {}
-  if (token) headers['Authorization'] = `Bearer ${token}`
-  const res = await fetch(`/api/import/csv/${category}`, { method: 'POST', headers, body: form })
-  if (res.status === 401) { if (token) { clearToken(); window.location.reload() }; throw new Error('Session expired') }
-  if (!res.ok) { const err = await res.json().catch(() => ({})) as { error?: string }; throw new Error(err.error || `HTTP ${res.status}`) }
-  return res.json()
+  return call(`/api/import/csv/${category}`, { method: 'POST', body: form })
 }
 
 export const refreshCategoryCovers = (category: string) =>
@@ -145,13 +117,7 @@ export const refreshItemCover = (category: string, itemId: number) =>
 export const previewCSVImport = async (category: string, file: File) => {
   const form = new FormData()
   form.append('file', file)
-  const token = getToken()
-  const headers: Record<string, string> = {}
-  if (token) headers['Authorization'] = `Bearer ${token}`
-  const res = await fetch(`/api/import/preview/${category}`, { method: 'POST', headers, body: form })
-  if (res.status === 401) { if (token) { clearToken(); window.location.reload() }; throw new Error('Session expired') }
-  if (!res.ok) { const err = await res.json().catch(() => ({})) as { error?: string }; throw new Error(err.error || `HTTP ${res.status}`) }
-  return res.json()
+  return call(`/api/import/preview/${category}`, { method: 'POST', body: form })
 }
 
 // --- Ongoing ---
@@ -175,13 +141,7 @@ export const clearQueue = (category: string) =>
 export const importQueueCSV = async (category: string, file: File) => {
   const form = new FormData()
   form.append('file', file)
-  const token = getToken()
-  const headers: Record<string, string> = {}
-  if (token) headers['Authorization'] = `Bearer ${token}`
-  const res = await fetch(`/api/queue/${category}/import`, { method: 'POST', headers, body: form })
-  if (res.status === 401) { if (token) { clearToken(); window.location.reload() }; throw new Error('Session expired') }
-  if (!res.ok) { const err = await res.json().catch(() => ({})) as { error?: string }; throw new Error(err.error || `HTTP ${res.status}`) }
-  return res.json()
+  return call(`/api/queue/${category}/import`, { method: 'POST', body: form })
 }
 
 export const getOngoingItems = (category: string) => call(`/api/ongoing/${category}`)
