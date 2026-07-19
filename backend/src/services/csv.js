@@ -122,12 +122,13 @@ function detectServiceColumns(records) {
   for (const col of allColumns) {
     const vals = [...new Set(records.map(r => (r[col] || '').trim()).filter(Boolean))];
     if (vals.length === 0 || vals.length > 20) continue;
-    const matchCount = vals.filter(v => {
-      const lv = v.toLowerCase();
-      return SERVICE_VALUE_SET.has(lv) || [...SERVICE_VALUE_SET].some(sv => lv.includes(sv));
-    }).length;
+    // Use exact set membership only — avoids false positives from broad substrings
+    // (e.g. "Nintendo Switch" contains "nintendo" but is a platform, not a service).
+    const matchCount = vals.filter(v => SERVICE_VALUE_SET.has(v.toLowerCase())).length;
     if (matchCount > 0) {
-      results.push({ column: col, values: vals.sort() });
+      // Only keep values that are in the service set (skip unrelated values from the same column)
+      const serviceVals = vals.filter(v => SERVICE_VALUE_SET.has(v.toLowerCase())).sort();
+      results.push({ column: col, values: serviceVals });
     }
   }
   return results;
