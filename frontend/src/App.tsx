@@ -4,6 +4,7 @@ import { getSlots, getSettings, getStats, updateMetadata, refreshCategoryCovers,
 import { toast, dismiss } from './notifications'
 import CategorySection from './components/CategorySection'
 import SettingsModal from './components/SettingsModal'
+import SyncModal from './components/SyncModal'
 import OngoingSection from './components/OngoingSection'
 import ToastContainer from './components/ToastContainer'
 import LoginPage from './components/LoginPage'
@@ -23,6 +24,7 @@ export default function App() {
   const [statProgress, setStatProgress] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [syncOpen, setSyncOpen] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [coversOpen, setCoversOpen] = useState(false)
   const [coversSelected, setCoversSelected] = useState<Record<string, boolean>>({ games: true, albums: true, comics: true })
@@ -166,6 +168,7 @@ export default function App() {
           <button className="btn-ghost" onClick={handleUpdate} disabled={updating} title="Refresh episode counts and airing dates from APIs (work in progress)">
             {updating ? '…' : '⟳ Update'}&nbsp;<span style={{ fontSize: 10, opacity: 0.45, fontWeight: 400 }}>WIP</span>
           </button>
+          <button className="btn-secondary" onClick={() => setSyncOpen(true)}>⟳ Sync</button>
           <button className="btn-ghost" onClick={() => setSettingsOpen(true)}>⚙ Settings</button>
           <button className="btn-ghost" onClick={handleLogout} title={`Logged in as ${user.username}`} style={{ opacity: 0.7 }}>
             ⏻ {user.username}
@@ -209,6 +212,7 @@ export default function App() {
       </footer>
 
       {settingsOpen && <SettingsModal onClose={() => { setSettingsOpen(false); refresh() }} />}
+      {syncOpen    && <SyncModal     onClose={() => { setSyncOpen(false);    refresh() }} />}
       <ToastContainer />
     </div>
   )
