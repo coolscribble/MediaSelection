@@ -43,8 +43,10 @@ async function searchVolume(title, apiKey) {
   const q = encodeURIComponent(baseName);
   const url = `${BASE}/search/?api_key=${apiKey}&query=${q}&resources=volume&format=json&field_list=id,name,image,start_year,count_of_issues&limit=10`;
   const r = await fetch(url, { headers: HEADERS });
+  if (r.status === 401 || r.status === 403) throw new Error('ComicVine API key is invalid — please re-enter it in Settings');
   if (!r.ok) return { result: null, confident: false, candidates: [] };
   const data = await r.json();
+  if (data.status_code === 100 || data.status_code === 101) throw new Error('ComicVine API key is invalid — please re-enter it in Settings');
   if (data.status_code !== 1) return { result: null, confident: false, candidates: [] };
 
   const results = data.results || [];
@@ -76,8 +78,10 @@ async function searchVolume(title, apiKey) {
 async function lookupById(cvId, apiKey) {
   const url = `${BASE}/volume/4050-${cvId}/?api_key=${apiKey}&format=json&field_list=id,name,image,start_year`;
   const r = await fetch(url, { headers: HEADERS });
+  if (r.status === 401 || r.status === 403) throw new Error('ComicVine API key is invalid — please re-enter it in Settings');
   if (!r.ok) return null;
   const data = await r.json();
+  if (data.status_code === 100 || data.status_code === 101) throw new Error('ComicVine API key is invalid — please re-enter it in Settings');
   if (data.status_code !== 1) return null;
   return data.results || null;
 }
