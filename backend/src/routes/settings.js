@@ -4,14 +4,14 @@ const { db } = require('../database');
 
 const CATS = ['movies', 'series', 'anime', 'manga', 'games', 'comics', 'albums'];
 
-const ANILIST_STATES_DEFAULT  = ['PLANNING'];
-const SIMKL_STATES_DEFAULT    = ['plantowatch'];
+const ANILIST_STATES_DEFAULT   = ['PLANNING'];
+const SIMKL_STATES_DEFAULT     = ['plantowatch'];
 const MAL_ANIME_STATES_DEFAULT = ['plantowatch'];
 const MAL_MANGA_STATES_DEFAULT = ['plantoread'];
 
 router.get('/', async (req, res) => {
   try {
-    const rows = await db.all('SELECT key, value FROM settings');
+    const rows = await db.all('SELECT key, value FROM settings WHERE user_id = ?', [req.userId]);
     const map = Object.fromEntries(rows.map(r => [r.key, r.value]));
 
     const queueModes = {};
@@ -37,9 +37,11 @@ router.get('/', async (req, res) => {
 
 router.post('/', async (req, res) => {
   try {
-    const upsert = (k, v) => db.run('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)', [k, v]);
+    const upsert = (k, v) =>
+      db.run('INSERT OR REPLACE INTO settings (user_id, key, value) VALUES (?, ?, ?)', [req.userId, k, v]);
 
-    const scalar = ['simkl_client_id', 'simkl_access_token', 'anilist_username', 'mal_username', 'igdb_client_id', 'igdb_client_secret', 'comicvine_api_key'];
+    const scalar = ['simkl_client_id', 'simkl_access_token', 'anilist_username', 'mal_username',
+                    'igdb_client_id', 'igdb_client_secret', 'comicvine_api_key'];
     if (req.body.save_covers_locally !== undefined) {
       await upsert('save_covers_locally', req.body.save_covers_locally ? 'true' : 'false');
     }

@@ -4,7 +4,6 @@ const BASE = 'https://api.simkl.com';
 const APP_NAME = 'mediapicker';
 const APP_VERSION = '1.9.3';
 
-// Build query string with the required Simkl identification params on every request
 function simklQS(clientId, extra = {}) {
   return new URLSearchParams({
     client_id: clientId,
@@ -14,7 +13,6 @@ function simklQS(clientId, extra = {}) {
   }).toString();
 }
 
-// Build auth headers with User-Agent (required for API Analytics)
 function simklHeaders(token, clientId) {
   return {
     Authorization: `Bearer ${token}`,
@@ -37,12 +35,12 @@ async function pollPin(clientId, userCode) {
   return (data.result === 'KO' || !data.access_token) ? null : data.access_token;
 }
 
-async function syncSimkl() {
+async function syncSimkl(userId) {
   const [cidRow, tokenRow, statesRow, lastActRow] = await Promise.all([
-    db.get('SELECT value FROM settings WHERE key = ?', ['simkl_client_id']),
-    db.get('SELECT value FROM settings WHERE key = ?', ['simkl_access_token']),
-    db.get('SELECT value FROM settings WHERE key = ?', ['simkl_states']),
-    db.get('SELECT value FROM settings WHERE key = ?', ['simkl_last_activities']),
+    db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [userId, 'simkl_client_id']),
+    db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [userId, 'simkl_access_token']),
+    db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [userId, 'simkl_states']),
+    db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [userId, 'simkl_last_activities']),
   ]);
   if (!cidRow?.value || !tokenRow?.value) throw new Error('Simkl is not configured (missing Client ID or token)');
 
@@ -52,8 +50,6 @@ async function syncSimkl() {
   const states = statesRow?.value ? JSON.parse(statesRow.value) : ['plantowatch'];
   const savedActivities = lastActRow?.value ? JSON.parse(lastActRow.value) : null;
 
-  // Phase 1: check whether anything actually changed since the last sync.
-  // If the activities.all timestamp is unchanged we can skip the heavy item fetches entirely.
   const actRes = await fetch(`${BASE}/sync/activities?${simklQS(cid)}`, { headers });
   if (!actRes.ok) throw new Error(`Simkl activities error: ${actRes.status}`);
   const activities = await actRes.json();
@@ -63,8 +59,6 @@ async function syncSimkl() {
     return { movies: 0, series: 0, anime: 0, skipped: true };
   }
 
-  // Phase 2: fetch library items. Pass date_from on subsequent syncs so only
-  // changed items are returned (full pull on first run when there is no saved timestamp).
   const dateFrom = savedActivities?.all || null;
   const counts = { movies: 0, series: 0, anime: 0 };
 
@@ -87,8 +81,8 @@ async function syncSimkl() {
 
         if (extId) {
           const existing = await db.get(
-            'SELECT id FROM library_items WHERE category = ? AND external_id = ?',
-            [category, extId]
+            'SELECT id FROM library_items WHERE user_id = ? AND category = ? AND external_id = ?',
+            [userId, category, extId]
           );
           if (existing) {
             await db.run(
@@ -99,18 +93,17 @@ async function syncSimkl() {
           }
         }
         await db.run(
-          'INSERT INTO library_items (category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?)',
-          [category, item.title, extId, thumb, metadata, 'simkl']
+          'INSERT INTO library_items (user_id, category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [userId, category, item.title, extId, thumb, metadata, 'simkl']
         );
         counts[category]++;
       }
     }
   }
 
-  // Save the current activities timestamp so the next sync can do a delta fetch
   await db.run(
-    'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
-    ['simkl_last_activities', JSON.stringify({ all: currentAll })]
+    'INSERT OR REPLACE INTO settings (user_id, key, value) VALUES (?, ?, ?)',
+    [userId, 'simkl_last_activities', JSON.stringify({ all: currentAll })]
   );
 
   return counts;

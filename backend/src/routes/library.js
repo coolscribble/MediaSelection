@@ -10,7 +10,10 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 
 router.get('/:category', async (req, res) => {
   try {
-    const items = await db.all('SELECT * FROM library_items WHERE category = ? ORDER BY title', [req.params.category]);
+    const items = await db.all(
+      'SELECT * FROM library_items WHERE user_id = ? AND category = ? ORDER BY title',
+      [req.userId, req.params.category]
+    );
     res.json(items.map(i => ({ ...i, metadata: JSON.parse(i.metadata || '{}') })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -20,8 +23,8 @@ router.post('/:category', async (req, res) => {
     const { title, thumbnail_url, external_id, metadata } = req.body;
     if (!title?.trim()) return res.status(400).json({ error: 'Title is required' });
     const r = await db.run(
-      'INSERT INTO library_items (category, title, thumbnail_url, external_id, metadata, source) VALUES (?, ?, ?, ?, ?, ?)',
-      [req.params.category, title.trim(), thumbnail_url || null, external_id || null, JSON.stringify(metadata || {}), 'manual']
+      'INSERT INTO library_items (user_id, category, title, thumbnail_url, external_id, metadata, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [req.userId, req.params.category, title.trim(), thumbnail_url || null, external_id || null, JSON.stringify(metadata || {}), 'manual']
     );
     res.json({ id: r.lastInsertRowid, title: title.trim() });
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -29,21 +32,25 @@ router.post('/:category', async (req, res) => {
 
 router.delete('/clear/:category', async (req, res) => {
   try {
-    // Unassign any slots that held items from this category before deleting
     await db.run(
       `UPDATE slots SET item_id = NULL, is_locked = 0
-       WHERE item_id IN (SELECT id FROM library_items WHERE category = ?)`,
-      [req.params.category]
+       WHERE user_id = ? AND item_id IN (SELECT id FROM library_items WHERE user_id = ? AND category = ?)`,
+      [req.userId, req.userId, req.params.category]
     );
-    await db.run('DELETE FROM library_items WHERE category = ?', [req.params.category]);
+    await db.run(
+      'DELETE FROM library_items WHERE user_id = ? AND category = ?',
+      [req.userId, req.params.category]
+    );
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Update cover URL for any library item; pass clear_review:true to remove ComicVine review flag
 router.patch('/:id', async (req, res) => {
   try {
-    const item = await db.get('SELECT metadata FROM library_items WHERE id = ?', [req.params.id]);
+    const item = await db.get(
+      'SELECT metadata FROM library_items WHERE id = ? AND user_id = ?',
+      [req.params.id, req.userId]
+    );
     if (!item) return res.status(404).json({ error: 'Not found' });
     const { thumbnail_url, clear_review } = req.body;
     const sets = [], vals = [];
@@ -62,11 +69,13 @@ router.patch('/:id', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Upload a cover image file — saves directly to local covers cache
 router.post('/:id/cover', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-    const item = await db.get('SELECT id, category, title FROM library_items WHERE id = ?', [req.params.id]);
+    const item = await db.get(
+      'SELECT id, category, title FROM library_items WHERE id = ? AND user_id = ?',
+      [req.params.id, req.userId]
+    );
     if (!item) return res.status(404).json({ error: 'Item not found' });
     const subdir = path.join(COVERS_DIR, item.category);
     if (!fs.existsSync(subdir)) fs.mkdirSync(subdir, { recursive: true });
@@ -82,8 +91,14 @@ router.post('/:id/cover', upload.single('file'), async (req, res) => {
 
 router.delete('/:id', async (req, res) => {
   try {
-    await db.run('UPDATE slots SET item_id = NULL, is_locked = 0 WHERE item_id = ?', [req.params.id]);
-    await db.run('DELETE FROM library_items WHERE id = ?', [req.params.id]);
+    await db.run(
+      'UPDATE slots SET item_id = NULL, is_locked = 0 WHERE user_id = ? AND item_id = ?',
+      [req.userId, req.params.id]
+    );
+    await db.run(
+      'DELETE FROM library_items WHERE id = ? AND user_id = ?',
+      [req.params.id, req.userId]
+    );
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

@@ -1,3 +1,8 @@
+export interface User {
+  username: string
+  server_url: string
+}
+
 export type Category = 'movies' | 'series' | 'anime' | 'manga' | 'games' | 'comics' | 'albums'
 export const CATEGORIES: Category[] = ['movies', 'series', 'anime', 'manga', 'games', 'comics', 'albums']
 export const CATEGORY_LABELS: Record<Category, string> = {

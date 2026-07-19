@@ -6,7 +6,6 @@ const { importCSV, previewCSV } = require('../services/csv');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 const VALID = ['movies', 'series', 'anime', 'manga', 'games', 'comics', 'albums'];
 
-// Preview — parse CSV and return unique filterable values without importing
 router.post('/preview/:category', upload.single('file'), async (req, res) => {
   if (!VALID.includes(req.params.category)) return res.status(400).json({ error: 'Invalid category' });
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -27,7 +26,12 @@ router.post('/csv/:category', upload.single('file'), async (req, res) => {
       try { acquisitionTypes = JSON.parse(req.body.acquisitionTypes); } catch {}
     }
     const retro = req.body.retro === 'true';
-    const result = await importCSV(req.file.buffer, req.params.category, { platforms, acquisitionTypes, retro });
+    const result = await importCSV(req.file.buffer, req.params.category, {
+      userId: req.userId,
+      platforms,
+      acquisitionTypes,
+      retro,
+    });
     res.json(result);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

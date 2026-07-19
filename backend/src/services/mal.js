@@ -5,14 +5,14 @@ const JIKAN = 'https://api.jikan.moe/v4';
 async function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 async function fetchPage(url) {
-  await delay(400); // Jikan rate limit: 3 req/s
+  await delay(400);
   const res = await fetch(url);
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Jikan API error ${res.status}: ${url}`);
   return res.json();
 }
 
-async function importList(username, listType, status, category) {
+async function importList(userId, username, listType, status, category) {
   let page = 1;
   let count = 0;
 
@@ -30,8 +30,8 @@ async function importList(username, listType, status, category) {
       const metadata = JSON.stringify({ total, status });
 
       const existing = await db.get(
-        'SELECT id FROM library_items WHERE category = ? AND external_id = ?',
-        [category, extId]
+        'SELECT id FROM library_items WHERE user_id = ? AND category = ? AND external_id = ?',
+        [userId, category, extId]
       );
       if (existing) {
         await db.run(
@@ -40,8 +40,8 @@ async function importList(username, listType, status, category) {
         );
       } else {
         await db.run(
-          'INSERT INTO library_items (category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?)',
-          [category, title, extId, thumb, metadata, 'mal']
+          'INSERT INTO library_items (user_id, category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
+          [userId, category, title, extId, thumb, metadata, 'mal']
         );
         count++;
       }
@@ -53,23 +53,26 @@ async function importList(username, listType, status, category) {
   return count;
 }
 
-async function syncMAL() {
-  const userRow = await db.get('SELECT value FROM settings WHERE key = ?', ['mal_username']);
+async function syncMAL(userId) {
+  const userRow = await db.get(
+    'SELECT value FROM settings WHERE user_id = ? AND key = ?',
+    [userId, 'mal_username']
+  );
   if (!userRow?.value) throw new Error('MAL username is not configured');
 
   const [aniStatesRow, mangaStatesRow] = await Promise.all([
-    db.get('SELECT value FROM settings WHERE key = ?', ['mal_anime_states']),
-    db.get('SELECT value FROM settings WHERE key = ?', ['mal_manga_states']),
+    db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [userId, 'mal_anime_states']),
+    db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [userId, 'mal_manga_states']),
   ]);
   const animeStates = aniStatesRow?.value ? JSON.parse(aniStatesRow.value) : ['plantowatch'];
   const mangaStates = mangaStatesRow?.value ? JSON.parse(mangaStatesRow.value) : ['plantoread'];
 
   let animeCount = 0, mangaCount = 0;
   for (const status of animeStates) {
-    animeCount += await importList(userRow.value, 'animelist', status, 'anime');
+    animeCount += await importList(userId, userRow.value, 'animelist', status, 'anime');
   }
   for (const status of mangaStates) {
-    mangaCount += await importList(userRow.value, 'mangalist', status, 'manga');
+    mangaCount += await importList(userId, userRow.value, 'mangalist', status, 'manga');
   }
   return { anime: animeCount, manga: mangaCount };
 }

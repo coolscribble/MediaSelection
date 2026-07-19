@@ -4,7 +4,10 @@ const { db } = require('../database');
 
 router.get('/', async (req, res) => {
   try {
-    const rows = await db.all('SELECT category, count, total_progress FROM completion_stats');
+    const rows = await db.all(
+      'SELECT category, count, total_progress FROM completion_stats WHERE user_id = ?',
+      [req.userId]
+    );
     const counts = {}, progress = {};
     for (const r of rows) {
       counts[r.category] = Number(r.count);

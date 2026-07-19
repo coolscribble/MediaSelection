@@ -23,11 +23,17 @@ query ($ids: [Int]) {
   }
 }`;
 
-async function syncAniList() {
-  const userRow = await db.get('SELECT value FROM settings WHERE key = ?', ['anilist_username']);
+async function syncAniList(userId) {
+  const userRow = await db.get(
+    'SELECT value FROM settings WHERE user_id = ? AND key = ?',
+    [userId, 'anilist_username']
+  );
   if (!userRow?.value) throw new Error('AniList username is not configured');
 
-  const statesRow = await db.get('SELECT value FROM settings WHERE key = ?', ['anilist_states']);
+  const statesRow = await db.get(
+    'SELECT value FROM settings WHERE user_id = ? AND key = ?',
+    [userId, 'anilist_states']
+  );
   const states = statesRow?.value ? JSON.parse(statesRow.value) : ['PLANNING'];
 
   let animeCount = 0, mangaCount = 0;
@@ -49,9 +55,9 @@ async function syncAniList() {
       for (const e of entries) {
         const m = e.media;
         const total = type === 'ANIME' ? (m.episodes || null) : (m.chapters || null);
-        const storedTitle = m.title.english || m.title.romaji
-        const romajiAlt = m.title.romaji && m.title.romaji !== storedTitle ? m.title.romaji : null
-        const metadata = JSON.stringify({ format: m.format, status: m.status, total, ...(romajiAlt ? { romaji_title: romajiAlt } : {}) })
+        const storedTitle = m.title.english || m.title.romaji;
+        const romajiAlt = m.title.romaji && m.title.romaji !== storedTitle ? m.title.romaji : null;
+        const metadata = JSON.stringify({ format: m.format, status: m.status, total, ...(romajiAlt ? { romaji_title: romajiAlt } : {}) });
 
         const remoteThumb = m.coverImage?.extraLarge || m.coverImage?.large || null;
         const localThumb = remoteThumb
@@ -59,8 +65,8 @@ async function syncAniList() {
           : null;
 
         const existing = await db.get(
-          'SELECT id FROM library_items WHERE category = ? AND external_id = ?',
-          [category, String(m.id)]
+          'SELECT id FROM library_items WHERE user_id = ? AND category = ? AND external_id = ?',
+          [userId, category, String(m.id)]
         );
         if (existing) {
           await db.run(
@@ -69,8 +75,8 @@ async function syncAniList() {
           );
         } else {
           await db.run(
-            'INSERT INTO library_items (category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?)',
-            [category, m.title.english || m.title.romaji, String(m.id), localThumb, metadata, 'anilist']
+            'INSERT INTO library_items (user_id, category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [userId, category, storedTitle, String(m.id), localThumb, metadata, 'anilist']
           );
           type === 'ANIME' ? animeCount++ : mangaCount++;
         }
@@ -81,10 +87,10 @@ async function syncAniList() {
   return { anime: animeCount, manga: mangaCount };
 }
 
-// Refreshes nextAiringEpisode data for all ongoing anime items
-async function updateOngoingAiringInfo() {
+async function updateOngoingAiringInfo(userId) {
   const items = await db.all(
-    "SELECT id, external_id FROM ongoing_items WHERE source = 'anilist' AND external_id IS NOT NULL"
+    "SELECT id, external_id FROM ongoing_items WHERE user_id = ? AND source = 'anilist' AND external_id IS NOT NULL",
+    [userId]
   );
   if (!items.length) return { updated: 0 };
 
@@ -122,8 +128,8 @@ async function updateOngoingAiringInfo() {
       }
       if (airingInfo !== null) {
         await db.run(
-          "UPDATE ongoing_items SET airing_info = ? WHERE source = 'anilist' AND external_id = ?",
-          [airingInfo, String(m.id)]
+          "UPDATE ongoing_items SET airing_info = ? WHERE user_id = ? AND source = 'anilist' AND external_id = ?",
+          [airingInfo, userId, String(m.id)]
         );
         updated++;
       }

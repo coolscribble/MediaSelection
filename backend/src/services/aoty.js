@@ -67,13 +67,13 @@ async function getMBCoverUrl(mbid) {
   } catch { return null; }
 }
 
-async function syncAOTY({ itemId } = {}) {
+async function syncAOTY({ userId, itemId } = {}) {
   const query = itemId
-    ? "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'albums' AND id = ?"
-    : "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'albums'";
+    ? "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE user_id = ? AND category = 'albums' AND id = ?"
+    : "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE user_id = ? AND category = 'albums'";
   const albums = itemId
-    ? await db.all(query, [itemId])
-    : await db.all(query);
+    ? await db.all(query, [userId, itemId])
+    : await db.all(query, [userId]);
 
   let updated = 0, skipped = 0;
   for (const album of albums) {
@@ -84,38 +84,27 @@ async function syncAOTY({ itemId } = {}) {
     let stableKey = null;
     let merged = { ...meta };
 
-    // 1. MusicBrainz + Cover Art Archive (primary — comprehensive, free)
     const mbResult = await searchMusicBrainz(artist, album.title);
     if (mbResult?.id) {
-      await new Promise(res => setTimeout(res, 1000)); // MusicBrainz rate limit: 1 req/s
+      await new Promise(res => setTimeout(res, 1000));
       thumb = await getMBCoverUrl(mbResult.id);
       if (thumb) {
         stableKey = `mb_${mbResult.id}`;
-        merged = {
-          ...meta,
-          mb_id: mbResult.id,
-          artist: mbResult['artist-credit']?.[0]?.name ?? meta.artist,
-        };
+        merged = { ...meta, mb_id: mbResult.id, artist: mbResult['artist-credit']?.[0]?.name ?? meta.artist };
       }
     }
 
-    // 2. Deezer (second — good coverage for mainstream and non-English)
     if (!thumb) {
       const dz = await searchDeezer(artist, album.title);
       if (dz) {
         thumb = dz.cover_xl || dz.cover_big || null;
         if (thumb) {
           stableKey = `dz_${dz.id}`;
-          merged = {
-            ...meta,
-            deezer_id: dz.id,
-            artist: dz.artist?.name ?? meta.artist,
-          };
+          merged = { ...meta, deezer_id: dz.id, artist: dz.artist?.name ?? meta.artist };
         }
       }
     }
 
-    // 3. iTunes (fallback — best metadata even if lower coverage for niche albums)
     if (!thumb) {
       const result = await searchITunes(artist, album.title);
       if (result) {
@@ -133,11 +122,7 @@ async function syncAOTY({ itemId } = {}) {
       }
     }
 
-    if (!thumb || !stableKey) {
-      // Fallback key using title slug so at least the cover can be found later
-      stableKey = `album_${titleSlug(album.title)}`;
-    }
-
+    if (!thumb || !stableKey) stableKey = `album_${titleSlug(album.title)}`;
     if (!thumb) { skipped++; continue; }
 
     const localThumb = await cacheImage('albums', stableKey, thumb);

@@ -28,14 +28,15 @@ async function waitForRateLimit() {
   _reqCount++;
 }
 
-async function getApiKey() {
-  const row = await db.get('SELECT value FROM settings WHERE key = ?', ['comicvine_api_key']);
+async function getApiKey(userId) {
+  const row = await db.get(
+    'SELECT value FROM settings WHERE user_id = ? AND key = ?',
+    [userId, 'comicvine_api_key']
+  );
   if (!row?.value) throw new Error('ComicVine API key not configured in Settings');
   return row.value;
 }
 
-// Parse CLZ/InfiniteBacklog titles: "Blue Beetle (Vol. 3) (2011 - 2013)"
-// Returns baseName ("Blue Beetle"), volume (3), startYear (2011)
 function parseComicTitle(title) {
   const volMatch  = title.match(/\(Vol\.?\s*(\d+)\)/i);
   const yearMatch = title.match(/\((\d{4})\s*[-–]\s*(\d{4}|Present)\)/i);
@@ -60,8 +61,6 @@ function buildCoverUrl(image) {
   return image?.medium_url || image?.original_url || image?.small_url || null;
 }
 
-// Search by volume title — returns { result, confident, candidates }
-// Uses base name (strips Vol/year suffixes), then matches by start_year
 async function searchVolume(title, apiKey) {
   const { baseName, startYear } = parseComicTitle(title);
   const q = encodeURIComponent(baseName);
@@ -76,20 +75,17 @@ async function searchVolume(title, apiKey) {
 
   const results = data.results || [];
   const nameLow = baseName.toLowerCase();
-  // Prefer exact name matches; fall back to all results if none
   const nameMatches = results.filter(x => x.name?.toLowerCase() === nameLow);
   const pool = nameMatches.length > 0 ? nameMatches : results;
 
   if (pool.length === 0) return { result: null, confident: false, candidates: [] };
   if (pool.length === 1) return { result: pool[0], confident: true, candidates: [] };
 
-  // Multiple volumes of the same name — match by start year (±1 tolerance)
   if (startYear) {
     const yearHit = pool.find(x => x.start_year && Math.abs(parseInt(x.start_year) - startYear) <= 1);
     if (yearHit) return { result: yearHit, confident: true, candidates: [] };
   }
 
-  // Ambiguous — best guess is first result; store up to 5 as review candidates
   const candidates = pool.slice(0, 5).map(x => ({
     id: x.id,
     name: x.name,
@@ -99,7 +95,6 @@ async function searchVolume(title, apiKey) {
   return { result: pool[0], confident: false, candidates };
 }
 
-// Direct lookup by ComicVine volume ID (stored as external_id)
 async function lookupById(cvId, apiKey) {
   const url = `${BASE}/volume/4050-${cvId}/?api_key=${apiKey}&format=json&field_list=id,name,image,start_year`;
   await waitForRateLimit();
@@ -112,14 +107,15 @@ async function lookupById(cvId, apiKey) {
   return data.results || null;
 }
 
-async function syncComicVine({ itemId } = {}) {
-  const apiKey = await getApiKey();
+async function syncComicVine({ userId, itemId } = {}) {
+  const apiKey = await getApiKey(userId);
 
-  // Bulk sync only processes items with no cover yet; single-item always runs
   const query = itemId
-    ? "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'comics' AND id = ?"
-    : "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'comics' AND (thumbnail_url IS NULL OR thumbnail_url = '')";
-  const comics = itemId ? await db.all(query, [itemId]) : await db.all(query);
+    ? "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE user_id = ? AND category = 'comics' AND id = ?"
+    : "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE user_id = ? AND category = 'comics' AND (thumbnail_url IS NULL OR thumbnail_url = '')";
+  const comics = itemId
+    ? await db.all(query, [userId, itemId])
+    : await db.all(query, [userId]);
 
   let updated = 0, skipped = 0, needsReview = 0;
   for (const comic of comics) {
@@ -127,7 +123,6 @@ async function syncComicVine({ itemId } = {}) {
 
     let result = null, confident = false, candidates = [];
 
-    // Use stored CV ID for direct lookup (faster + more accurate on re-runs)
     if (comic.external_id && !itemId) {
       result = await lookupById(comic.external_id, apiKey);
       confident = !!result;

@@ -78,13 +78,13 @@ async function searchInternetArchive(title) {
   } catch { return null; }
 }
 
-async function syncGoogleBooks({ itemId } = {}) {
+async function syncGoogleBooks({ userId, itemId } = {}) {
   const query = itemId
-    ? "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'comics' AND id = ?"
-    : "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'comics'";
+    ? "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE user_id = ? AND category = 'comics' AND id = ?"
+    : "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE user_id = ? AND category = 'comics'";
   const comics = itemId
-    ? await db.all(query, [itemId])
-    : await db.all(query);
+    ? await db.all(query, [userId, itemId])
+    : await db.all(query, [userId]);
 
   let updated = 0, skipped = 0;
   for (const comic of comics) {

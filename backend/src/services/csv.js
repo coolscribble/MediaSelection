@@ -177,6 +177,7 @@ const GAME_INCLUDE = new Set(['unfinished', 'playing', 'currently playing', 'in 
 const GAME_SKIP    = new Set(['completed', 'beaten', 'mastered', 'abandoned']);
 
 async function importCSV(buffer, category, options = {}) {
+  const userId = options.userId;
   const records = await parseCSV(buffer);
   let count = 0;
   let refreshed = 0;
@@ -291,8 +292,8 @@ async function importCSV(buffer, category, options = {}) {
 
       // Also skip if this series title already exists in the library (re-import safety)
       const dbDup = await db.get(
-        "SELECT id FROM library_items WHERE category = 'comics' AND LOWER(title) = LOWER(?)",
-        [title]
+        "SELECT id FROM library_items WHERE user_id = ? AND category = 'comics' AND LOWER(title) = LOWER(?)",
+        [userId, title]
       );
       if (dbDup) continue;
     } else {
@@ -307,8 +308,8 @@ async function importCSV(buffer, category, options = {}) {
         const extIdForDup = extractExternalId(r);
         if (extIdForDup) {
           const dbDup = await db.get(
-            "SELECT id FROM library_items WHERE category = 'games' AND external_id = ?",
-            [extIdForDup]
+            "SELECT id FROM library_items WHERE user_id = ? AND category = 'games' AND external_id = ?",
+            [userId, extIdForDup]
           );
           if (dbDup) {
             await db.run(
@@ -321,8 +322,8 @@ async function importCSV(buffer, category, options = {}) {
           }
         } else {
           const dbDup = await db.get(
-            "SELECT id FROM library_items WHERE category = 'games' AND LOWER(title) = LOWER(?)",
-            [title]
+            "SELECT id FROM library_items WHERE user_id = ? AND category = 'games' AND LOWER(title) = LOWER(?)",
+            [userId, title]
           );
           if (dbDup) {
             await db.run(
@@ -354,8 +355,8 @@ async function importCSV(buffer, category, options = {}) {
 
     try {
       await db.run(
-        'INSERT INTO library_items (category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?)',
-        [category, title.trim(), extId, cachedThumb, JSON.stringify(buildMetadata(r)), 'csv']
+        'INSERT INTO library_items (user_id, category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [userId, category, title.trim(), extId, cachedThumb, JSON.stringify(buildMetadata(r)), 'csv']
       );
       count++;
     } catch (e) {
@@ -365,9 +366,9 @@ async function importCSV(buffer, category, options = {}) {
   return { imported: count, refreshed };
 }
 
-async function importQueueCSV(buffer, category) {
+async function importQueueCSV(buffer, category, userId) {
   const records = await parseCSV(buffer);
-  const maxRow = await db.get('SELECT MAX(position) as m FROM queue_items WHERE category = ?', [category]);
+  const maxRow = await db.get('SELECT MAX(position) as m FROM queue_items WHERE user_id = ? AND category = ?', [userId, category]);
   let pos = (maxRow?.m ?? -1) + 1;
   let count = 0;
   const seenTitles = new Set();
@@ -396,8 +397,8 @@ async function importQueueCSV(buffer, category) {
       seenTitles.add(key);
 
       const dbDup = await db.get(
-        "SELECT id FROM queue_items WHERE category = 'comics' AND LOWER(title) = LOWER(?)",
-        [title]
+        "SELECT id FROM queue_items WHERE user_id = ? AND category = 'comics' AND LOWER(title) = LOWER(?)",
+        [userId, title]
       );
       if (dbDup) continue;
     } else {
@@ -406,8 +407,8 @@ async function importQueueCSV(buffer, category) {
     }
 
     await db.run(
-      'INSERT INTO queue_items (category, position, title, external_id, thumbnail_url, metadata) VALUES (?, ?, ?, ?, ?, ?)',
-      [category, pos++, title.trim(), extractExternalId(r) || null, extractThumbnail(r) || null, JSON.stringify(buildMetadata(r))]
+      'INSERT INTO queue_items (user_id, category, position, title, external_id, thumbnail_url, metadata) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [userId, category, pos++, title.trim(), extractExternalId(r) || null, extractThumbnail(r) || null, JSON.stringify(buildMetadata(r))]
     );
     count++;
   }

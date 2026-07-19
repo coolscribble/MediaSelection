@@ -4,38 +4,41 @@ const { db } = require('../database');
 
 const CATEGORIES = ['movies', 'series', 'anime', 'manga', 'games', 'comics', 'albums'];
 
-async function isQueueMode(category) {
-  const row = await db.get('SELECT value FROM settings WHERE key = ?', [`queue_mode_${category}`]);
+async function isQueueMode(userId, category) {
+  const row = await db.get(
+    'SELECT value FROM settings WHERE user_id = ? AND key = ?',
+    [userId, `queue_mode_${category}`]
+  );
   return row?.value === 'true';
 }
 
-async function consumeNextQueueItem(category) {
+async function consumeNextQueueItem(userId, category) {
   const item = await db.get(
-    'SELECT * FROM queue_items WHERE category = ? AND consumed = 0 ORDER BY position ASC LIMIT 1',
-    [category]
+    'SELECT * FROM queue_items WHERE user_id = ? AND category = ? AND consumed = 0 ORDER BY position ASC LIMIT 1',
+    [userId, category]
   );
   if (!item) return null;
   await db.run('UPDATE queue_items SET consumed = 1 WHERE id = ?', [item.id]);
 
   if (item.external_id) {
     const existing = await db.get(
-      'SELECT id FROM library_items WHERE category = ? AND external_id = ?',
-      [category, item.external_id]
+      'SELECT id FROM library_items WHERE user_id = ? AND category = ? AND external_id = ?',
+      [userId, category, item.external_id]
     );
     if (existing) return { libId: existing.id, title: item.title };
   }
   const r = await db.run(
-    'INSERT INTO library_items (category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?)',
-    [category, item.title, item.external_id, item.thumbnail_url, item.metadata || '{}', 'queue']
+    'INSERT INTO library_items (user_id, category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [userId, category, item.title, item.external_id, item.thumbnail_url, item.metadata || '{}', 'queue']
   );
   return { libId: r.lastInsertRowid, title: item.title };
 }
 
-async function incrementStat(category, progress) {
+async function incrementStat(userId, category, progress) {
   await db.run(
-    `INSERT INTO completion_stats (category, count, total_progress) VALUES (?, 1, ?)
-     ON CONFLICT(category) DO UPDATE SET count = count + 1, total_progress = total_progress + ?`,
-    [category, progress || 0, progress || 0]
+    `INSERT INTO completion_stats (user_id, category, count, total_progress) VALUES (?, ?, 1, ?)
+     ON CONFLICT(user_id, category) DO UPDATE SET count = count + 1, total_progress = total_progress + ?`,
+    [userId, category, progress || 0, progress || 0]
   );
 }
 
@@ -46,8 +49,9 @@ router.get('/', async (req, res) => {
              li.title, li.thumbnail_url, li.external_id, li.metadata, li.source
       FROM slots s
       LEFT JOIN library_items li ON s.item_id = li.id
+      WHERE s.user_id = ?
       ORDER BY s.category, s.slot_index
-    `);
+    `, [req.userId]);
     const result = {};
     for (const cat of CATEGORIES) {
       result[cat] = slots
@@ -65,7 +69,7 @@ router.get('/', async (req, res) => {
 
 router.post('/:id/lock', async (req, res) => {
   try {
-    const slot = await db.get('SELECT * FROM slots WHERE id = ?', [req.params.id]);
+    const slot = await db.get('SELECT * FROM slots WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
     if (!slot) return res.status(404).json({ error: 'Slot not found' });
     await db.run('UPDATE slots SET is_locked = ? WHERE id = ?', [slot.is_locked ? 0 : 1, req.params.id]);
     res.json({ is_locked: !slot.is_locked });
@@ -74,18 +78,21 @@ router.post('/:id/lock', async (req, res) => {
 
 router.post('/:id/complete', async (req, res) => {
   try {
-    const slot = await db.get('SELECT * FROM slots WHERE id = ?', [req.params.id]);
+    const slot = await db.get('SELECT * FROM slots WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
     if (!slot) return res.status(404).json({ error: 'Slot not found' });
 
     const completedItemId = slot.item_id;
-    if (completedItemId) await incrementStat(slot.category, slot.current_progress || 0);
+    if (completedItemId) await incrementStat(req.userId, slot.category, slot.current_progress || 0);
 
-    await db.run('UPDATE slots SET item_id = NULL, is_locked = 0, note = NULL, current_progress = 0 WHERE id = ?', [req.params.id]);
+    await db.run(
+      'UPDATE slots SET item_id = NULL, is_locked = 0, note = NULL, current_progress = 0 WHERE id = ?',
+      [req.params.id]
+    );
 
     if (completedItemId) await db.run('DELETE FROM library_items WHERE id = ?', [completedItemId]);
 
-    if (await isQueueMode(slot.category)) {
-      const next = await consumeNextQueueItem(slot.category);
+    if (await isQueueMode(req.userId, slot.category)) {
+      const next = await consumeNextQueueItem(req.userId, slot.category);
       if (next) {
         await db.run('UPDATE slots SET item_id = ? WHERE id = ?', [next.libId, req.params.id]);
         return res.json({ success: true, auto_filled: next.title });
@@ -100,7 +107,7 @@ router.post('/:id/complete', async (req, res) => {
 router.post('/:id/note', async (req, res) => {
   try {
     const { note } = req.body;
-    await db.run('UPDATE slots SET note = ? WHERE id = ?', [note || null, req.params.id]);
+    await db.run('UPDATE slots SET note = ? WHERE id = ? AND user_id = ?', [note || null, req.params.id, req.userId]);
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -109,19 +116,22 @@ router.post('/:id/progress', async (req, res) => {
   try {
     const { progress } = req.body;
     if (typeof progress !== 'number' || progress < 0) return res.status(400).json({ error: 'Invalid progress value' });
-    await db.run('UPDATE slots SET current_progress = ? WHERE id = ?', [Math.floor(progress), req.params.id]);
+    await db.run(
+      'UPDATE slots SET current_progress = ? WHERE id = ? AND user_id = ?',
+      [Math.floor(progress), req.params.id, req.userId]
+    );
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.post('/:id/reroll', async (req, res) => {
   try {
-    const slot = await db.get('SELECT * FROM slots WHERE id = ?', [req.params.id]);
+    const slot = await db.get('SELECT * FROM slots WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
     if (!slot) return res.status(404).json({ error: 'Slot not found' });
     if (slot.is_locked) return res.status(400).json({ error: 'Slot is locked' });
 
-    if (await isQueueMode(slot.category)) {
-      const next = await consumeNextQueueItem(slot.category);
+    if (await isQueueMode(req.userId, slot.category)) {
+      const next = await consumeNextQueueItem(req.userId, slot.category);
       if (!next) return res.status(400).json({ error: 'Queue is empty' });
       await db.run('UPDATE slots SET item_id = ?, current_progress = 0 WHERE id = ?', [next.libId, req.params.id]);
       const item = await db.get('SELECT * FROM library_items WHERE id = ?', [next.libId]);
@@ -129,18 +139,21 @@ router.post('/:id/reroll', async (req, res) => {
     }
 
     const occupied = await db.all(
-      'SELECT item_id FROM slots WHERE category = ? AND item_id IS NOT NULL AND id != ?',
-      [slot.category, req.params.id]
+      'SELECT item_id FROM slots WHERE user_id = ? AND category = ? AND item_id IS NOT NULL AND id != ?',
+      [req.userId, slot.category, req.params.id]
     );
     const excludeIds = occupied.map(r => r.item_id).filter(Boolean);
     let items;
     if (excludeIds.length) {
       items = await db.all(
-        `SELECT * FROM library_items WHERE category = ? AND id NOT IN (${excludeIds.map(() => '?').join(',')})`,
-        [slot.category, ...excludeIds]
+        `SELECT * FROM library_items WHERE user_id = ? AND category = ? AND id NOT IN (${excludeIds.map(() => '?').join(',')})`,
+        [req.userId, slot.category, ...excludeIds]
       );
     } else {
-      items = await db.all('SELECT * FROM library_items WHERE category = ?', [slot.category]);
+      items = await db.all(
+        'SELECT * FROM library_items WHERE user_id = ? AND category = ?',
+        [req.userId, slot.category]
+      );
     }
     if (!items.length) return res.status(400).json({ error: 'No items in library for this category' });
 
@@ -153,10 +166,13 @@ router.post('/:id/reroll', async (req, res) => {
 router.post('/:id/assign', async (req, res) => {
   try {
     const { item_id } = req.body;
-    const slot = await db.get('SELECT * FROM slots WHERE id = ?', [req.params.id]);
+    const slot = await db.get('SELECT * FROM slots WHERE id = ? AND user_id = ?', [req.params.id, req.userId]);
     if (!slot) return res.status(404).json({ error: 'Slot not found' });
     if (slot.is_locked) return res.status(400).json({ error: 'Slot is locked' });
-    const item = await db.get('SELECT * FROM library_items WHERE id = ? AND category = ?', [item_id, slot.category]);
+    const item = await db.get(
+      'SELECT * FROM library_items WHERE id = ? AND user_id = ? AND category = ?',
+      [item_id, req.userId, slot.category]
+    );
     if (!item) return res.status(404).json({ error: 'Item not found' });
     await db.run('UPDATE slots SET item_id = ?, current_progress = 0 WHERE id = ?', [item_id, req.params.id]);
     res.json({ success: true });
@@ -166,12 +182,15 @@ router.post('/:id/assign', async (req, res) => {
 router.post('/category/:category/reroll-all', async (req, res) => {
   try {
     const { category } = req.params;
-    const unlockedSlots = await db.all('SELECT * FROM slots WHERE category = ? AND is_locked = 0', [category]);
+    const unlockedSlots = await db.all(
+      'SELECT * FROM slots WHERE user_id = ? AND category = ? AND is_locked = 0',
+      [req.userId, category]
+    );
     if (!unlockedSlots.length) return res.json({ success: true, message: 'All slots are locked' });
 
-    if (await isQueueMode(category)) {
+    if (await isQueueMode(req.userId, category)) {
       for (const slot of unlockedSlots) {
-        const next = await consumeNextQueueItem(category);
+        const next = await consumeNextQueueItem(req.userId, category);
         if (!next) break;
         await db.run('UPDATE slots SET item_id = ?, current_progress = 0 WHERE id = ?', [next.libId, slot.id]);
       }
@@ -179,25 +198,31 @@ router.post('/category/:category/reroll-all', async (req, res) => {
     }
 
     const locked = await db.all(
-      'SELECT item_id FROM slots WHERE category = ? AND is_locked = 1 AND item_id IS NOT NULL',
-      [category]
+      'SELECT item_id FROM slots WHERE user_id = ? AND category = ? AND is_locked = 1 AND item_id IS NOT NULL',
+      [req.userId, category]
     );
     const lockedIds = locked.map(r => r.item_id).filter(Boolean);
     let pool;
     if (lockedIds.length) {
       pool = await db.all(
-        `SELECT * FROM library_items WHERE category = ? AND id NOT IN (${lockedIds.map(() => '?').join(',')})`,
-        [category, ...lockedIds]
+        `SELECT * FROM library_items WHERE user_id = ? AND category = ? AND id NOT IN (${lockedIds.map(() => '?').join(',')})`,
+        [req.userId, category, ...lockedIds]
       );
     } else {
-      pool = await db.all('SELECT * FROM library_items WHERE category = ?', [category]);
+      pool = await db.all(
+        'SELECT * FROM library_items WHERE user_id = ? AND category = ?',
+        [req.userId, category]
+      );
     }
     if (pool.length < unlockedSlots.length) {
       return res.status(400).json({ error: `Not enough items: have ${pool.length}, need ${unlockedSlots.length}` });
     }
     const shuffled = [...pool].sort(() => Math.random() - 0.5);
     for (let i = 0; i < unlockedSlots.length; i++) {
-      await db.run('UPDATE slots SET item_id = ?, current_progress = 0 WHERE id = ?', [shuffled[i].id, unlockedSlots[i].id]);
+      await db.run(
+        'UPDATE slots SET item_id = ?, current_progress = 0 WHERE id = ?',
+        [shuffled[i].id, unlockedSlots[i].id]
+      );
     }
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }

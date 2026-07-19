@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { CATEGORIES, CATEGORY_LABELS, CATEGORY_ICONS, SlotsData, Settings } from './types'
-import { getSlots, getSettings, getStats, updateMetadata, refreshCategoryCovers } from './api'
+import { CATEGORIES, CATEGORY_LABELS, CATEGORY_ICONS, SlotsData, Settings, User } from './types'
+import { getSlots, getSettings, getStats, updateMetadata, refreshCategoryCovers, getMe, logout, clearToken, setToken } from './api'
 import { toast, dismiss } from './notifications'
 import CategorySection from './components/CategorySection'
 import SettingsModal from './components/SettingsModal'
 import SyncModal from './components/SyncModal'
 import OngoingSection from './components/OngoingSection'
 import ToastContainer from './components/ToastContainer'
+import LoginPage from './components/LoginPage'
 
 const COVER_OPTIONS = [
   { key: 'games',  label: '🎮 Games (IGDB)',                   cat: 'games'  },
@@ -15,6 +16,8 @@ const COVER_OPTIONS = [
 ]
 
 export default function App() {
+  const [user, setUser] = useState<User | null>(null)
+  const [authChecked, setAuthChecked] = useState(false)
   const [slots, setSlots] = useState<SlotsData | null>(null)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [statCounts, setStatCounts] = useState<Record<string, number>>({})
@@ -28,6 +31,25 @@ export default function App() {
   const [coversBusy, setCoversBusy] = useState(false)
   const coversRef = useRef<HTMLDivElement>(null)
 
+  useEffect(() => {
+    getMe()
+      .then((u: User) => { setUser(u); setAuthChecked(true) })
+      .catch(() => { setUser(null); setAuthChecked(true) })
+  }, [])
+
+  const handleLogin = (token: string, u: User) => {
+    setToken(token)
+    setUser(u)
+  }
+
+  const handleLogout = async () => {
+    try { await logout() } catch { /* ignore */ }
+    clearToken()
+    setUser(null)
+    setSlots(null)
+    setSettings(null)
+  }
+
   const refresh = useCallback(async () => {
     try {
       const [s, cfg, st] = await Promise.all([getSlots(), getSettings(), getStats()])
@@ -40,7 +62,7 @@ export default function App() {
     finally { setLoading(false) }
   }, [])
 
-  useEffect(() => { refresh() }, [refresh])
+  useEffect(() => { if (user) refresh() }, [user, refresh])
 
   // Close covers popup when clicking outside
   useEffect(() => {
@@ -97,6 +119,8 @@ export default function App() {
     } finally { setCoversBusy(false) }
   }
 
+  if (!authChecked) return <div className="loading">Loading…</div>
+  if (!user) return <LoginPage onLogin={handleLogin} />
   if (loading) return <div className="loading">Loading…</div>
 
   return (
@@ -146,6 +170,9 @@ export default function App() {
           </button>
           <button className="btn-secondary" onClick={() => setSyncOpen(true)}>⟳ Sync</button>
           <button className="btn-ghost" onClick={() => setSettingsOpen(true)}>⚙ Settings</button>
+          <button className="btn-ghost" onClick={handleLogout} title={`Logged in as ${user.username}`} style={{ opacity: 0.7 }}>
+            ⏻ {user.username}
+          </button>
         </div>
       </header>
 

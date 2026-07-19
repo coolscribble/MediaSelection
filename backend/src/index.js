@@ -4,20 +4,28 @@ const path = require('path');
 const fs = require('fs');
 const { init } = require('./database');
 const { migrateCovers } = require('./services/imageCache');
+const { requireAuth } = require('./middleware/auth');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
-app.use('/api/slots', require('./routes/slots'));
-app.use('/api/library', require('./routes/library'));
-app.use('/api/sync', require('./routes/sync'));
-app.use('/api/import', require('./routes/import'));
-app.use('/api/settings', require('./routes/settings'));
-app.use('/api/queue',    require('./routes/queue'));
-app.use('/api/ongoing', require('./routes/ongoing'));
-app.use('/api/stats',   require('./routes/stats'));
-app.use('/api/covers',  require('./routes/covers'));
+// Public routes — no auth required
+app.use('/api/auth', require('./routes/auth'));
+app.use('/api/covers', require('./routes/covers')); // images loaded via <img src>, can't send Bearer
+
+// Protected routes — all require a valid session token
+const api = express.Router();
+api.use(requireAuth);
+api.use('/slots',    require('./routes/slots'));
+api.use('/library',  require('./routes/library'));
+api.use('/sync',     require('./routes/sync'));
+api.use('/import',   require('./routes/import'));
+api.use('/settings', require('./routes/settings'));
+api.use('/queue',    require('./routes/queue'));
+api.use('/ongoing',  require('./routes/ongoing'));
+api.use('/stats',    require('./routes/stats'));
+app.use('/api', api);
 
 const STATIC_DIR = path.join(__dirname, '../public');
 if (fs.existsSync(STATIC_DIR)) {

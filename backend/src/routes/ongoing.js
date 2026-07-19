@@ -35,12 +35,11 @@ function buildAiringInfo(m) {
   return null
 }
 
-// GET /:category — list all items for a category
 router.get('/:category', async (req, res) => {
   try {
     const items = await db.all(
-      'SELECT * FROM ongoing_items WHERE category = ? ORDER BY created_at ASC',
-      [req.params.category]
+      'SELECT * FROM ongoing_items WHERE user_id = ? AND category = ? ORDER BY created_at ASC',
+      [req.userId, req.params.category]
     )
     res.json(items.map(i => ({
       ...i,
@@ -51,10 +50,12 @@ router.get('/:category', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// POST /sync/anilist — sync CURRENT anime+manga from AniList (includes airing info)
 router.post('/sync/anilist', async (req, res) => {
   try {
-    const userRow = await db.get('SELECT value FROM settings WHERE key = ?', ['anilist_username'])
+    const userRow = await db.get(
+      'SELECT value FROM settings WHERE user_id = ? AND key = ?',
+      [req.userId, 'anilist_username']
+    )
     if (!userRow?.value) return res.status(400).json({ error: 'AniList username not configured' })
 
     let animeCount = 0, mangaCount = 0
@@ -77,16 +78,15 @@ router.post('/sync/anilist', async (req, res) => {
         const airingInfo = buildAiringInfo(m)
 
         const existing = await db.get(
-          'SELECT id FROM ongoing_items WHERE category = ? AND external_id = ?',
-          [category, extId]
+          'SELECT id FROM ongoing_items WHERE user_id = ? AND category = ? AND external_id = ?',
+          [req.userId, category, extId]
         )
         if (existing) {
-          // Update airing info for existing items
           await db.run('UPDATE ongoing_items SET airing_info = ? WHERE id = ?', [airingInfo, existing.id])
         } else {
           await db.run(
-            'INSERT INTO ongoing_items (category, title, external_id, thumbnail_url, metadata, airing_info, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
-            [category, title, extId, m.coverImage?.extraLarge || m.coverImage?.large || null, JSON.stringify({ format: m.format }), airingInfo, 'anilist']
+            'INSERT INTO ongoing_items (user_id, category, title, external_id, thumbnail_url, metadata, airing_info, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+            [req.userId, category, title, extId, m.coverImage?.extraLarge || m.coverImage?.large || null, JSON.stringify({ format: m.format }), airingInfo, 'anilist']
           )
           type === 'ANIME' ? animeCount++ : mangaCount++
         }
@@ -97,19 +97,17 @@ router.post('/sync/anilist', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// POST /sync/simkl — sync watching shows from Simkl
 router.post('/sync/simkl', async (req, res) => {
   try {
     const [cidRow, tokenRow] = await Promise.all([
-      db.get('SELECT value FROM settings WHERE key = ?', ['simkl_client_id']),
-      db.get('SELECT value FROM settings WHERE key = ?', ['simkl_access_token']),
+      db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [req.userId, 'simkl_client_id']),
+      db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [req.userId, 'simkl_access_token']),
     ])
     if (!cidRow?.value || !tokenRow?.value) return res.status(400).json({ error: 'Simkl not configured' })
 
     const cid = cidRow.value
     const headers = simklHeaders(tokenRow.value, cid)
 
-    // Always full fetch — delta (date_from) skips shows that were deleted from the DB and need to come back
     const r = await fetch(`https://api.simkl.com/sync/all-items/watching/shows?${simklQS(cid)}`, { headers })
     if (r.status === 404) return res.json({ series: 0 })
     if (!r.ok) throw new Error(`Simkl API error: ${r.status}`)
@@ -122,7 +120,6 @@ router.post('/sync/simkl', async (req, res) => {
       const extId = show.ids?.simkl ? String(show.ids.simkl) : null
       const thumb = show.poster ? `https://simkl.in/posters/${show.poster}_m.webp` : null
 
-      // Baseline episode data from the all-items response (no extra API call)
       const totalFromEntry = show.episode_count != null ? Number(show.episode_count)
         : show.total_episodes != null ? Number(show.total_episodes) : null
       const watchedFromSimkl = entry.watched_episodes_count != null ? Number(entry.watched_episodes_count) : null
@@ -139,44 +136,22 @@ router.post('/sync/simkl', async (req, res) => {
           if (detailRes.ok) {
             const detail = await detailRes.json()
             showStatus = (detail.status || '').toLowerCase()
-            // Try multiple field names — Simkl's response varies by show type/region
             const aired = detail.aired_episodes != null ? Number(detail.aired_episodes)
-              : detail.total_aired_episodes != null ? Number(detail.total_aired_episodes)
-              : null
+              : detail.total_aired_episodes != null ? Number(detail.total_aired_episodes) : null
             const total = detail.total_episodes != null ? Number(detail.total_episodes)
-              : detail.episode_count != null ? Number(detail.episode_count)
-              : totalFromEntry
+              : detail.episode_count != null ? Number(detail.episode_count) : totalFromEntry
             if (aired !== null && !isNaN(aired)) {
-              airingInfo = JSON.stringify({
-                episodes_aired: aired,
-                total_episodes: total !== null && !isNaN(total) ? total : null,
-                next_episode: null,
-                next_air_time: null,
-              })
+              airingInfo = JSON.stringify({ episodes_aired: aired, total_episodes: total !== null && !isNaN(total) ? total : null, next_episode: null, next_air_time: null })
             } else if (total !== null && !isNaN(total)) {
-              // Detail returned status but no explicit aired count — use total as best estimate
-              airingInfo = JSON.stringify({
-                episodes_aired: total,
-                total_episodes: total,
-                next_episode: null,
-                next_air_time: null,
-              })
+              airingInfo = JSON.stringify({ episodes_aired: total, total_episodes: total, next_episode: null, next_air_time: null })
             }
           }
         } catch (e) {
           console.warn(`[simkl-ongoing] detail fetch failed for ${extId}: ${e.message}`)
         }
-
-        // If detail API gave nothing, fall back to episode_count from all-items
         if (!airingInfo && totalFromEntry !== null && !isNaN(totalFromEntry)) {
-          airingInfo = JSON.stringify({
-            episodes_aired: totalFromEntry,
-            total_episodes: totalFromEntry,
-            next_episode: null,
-            next_air_time: null,
-          })
+          airingInfo = JSON.stringify({ episodes_aired: totalFromEntry, total_episodes: totalFromEntry, next_episode: null, next_air_time: null })
         }
-
         await new Promise(resolve => setTimeout(resolve, 300))
       }
 
@@ -185,15 +160,12 @@ router.post('/sync/simkl', async (req, res) => {
       const meta = JSON.stringify({ year: show.year, status: showStatus || null })
       if (extId) {
         const existing = await db.get(
-          'SELECT id FROM ongoing_items WHERE category = ? AND external_id = ?',
-          ['series_ongoing', extId]
+          'SELECT id FROM ongoing_items WHERE user_id = ? AND category = ? AND external_id = ?',
+          [req.userId, 'series_ongoing', extId]
         )
         if (existing) {
           if (airingInfo !== null) {
-            await db.run(
-              'UPDATE ongoing_items SET metadata = ?, airing_info = ? WHERE id = ?',
-              [meta, airingInfo, existing.id]
-            )
+            await db.run('UPDATE ongoing_items SET metadata = ?, airing_info = ? WHERE id = ?', [meta, airingInfo, existing.id])
           } else {
             await db.run('UPDATE ongoing_items SET metadata = ? WHERE id = ?', [meta, existing.id])
           }
@@ -201,8 +173,8 @@ router.post('/sync/simkl', async (req, res) => {
         }
       }
       await db.run(
-        'INSERT INTO ongoing_items (category, title, external_id, thumbnail_url, metadata, airing_info, watched_progress, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-        ['series_ongoing', show.title, extId, thumb, meta, airingInfo, watchedFromSimkl ?? 0, 'simkl']
+        'INSERT INTO ongoing_items (user_id, category, title, external_id, thumbnail_url, metadata, airing_info, watched_progress, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [req.userId, 'series_ongoing', show.title, extId, thumb, meta, airingInfo, watchedFromSimkl ?? 0, 'simkl']
       )
       count++
     }
@@ -211,28 +183,28 @@ router.post('/sync/simkl', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// POST /:category — add item manually
 router.post('/:category', async (req, res) => {
   const { title, thumbnail_url } = req.body
   if (!title?.trim()) return res.status(400).json({ error: 'Title is required' })
   try {
     const r = await db.run(
-      'INSERT INTO ongoing_items (category, title, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?)',
-      [req.params.category, title.trim(), thumbnail_url || null, '{}', 'manual']
+      'INSERT INTO ongoing_items (user_id, category, title, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?)',
+      [req.userId, req.params.category, title.trim(), thumbnail_url || null, '{}', 'manual']
     )
     res.json({ id: r.lastInsertRowid })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// DELETE /item/:id — remove one item
 router.delete('/item/:id', async (req, res) => {
   try {
-    await db.run('DELETE FROM ongoing_items WHERE id = ?', [Number(req.params.id)])
+    await db.run(
+      'DELETE FROM ongoing_items WHERE id = ? AND user_id = ?',
+      [Number(req.params.id), req.userId]
+    )
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
 })
 
-// PATCH /item/:id — update watched progress or airing info
 router.patch('/item/:id', async (req, res) => {
   try {
     const { airing_info, watched_progress } = req.body
@@ -246,7 +218,10 @@ router.patch('/item/:id', async (req, res) => {
       vals.push(Math.max(0, Number(watched_progress) || 0))
     }
     if (sets.length) {
-      await db.run(`UPDATE ongoing_items SET ${sets.join(', ')} WHERE id = ?`, [...vals, Number(req.params.id)])
+      await db.run(
+        `UPDATE ongoing_items SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`,
+        [...vals, Number(req.params.id), req.userId]
+      )
     }
     res.json({ ok: true })
   } catch (e) { res.status(500).json({ error: e.message }) }
