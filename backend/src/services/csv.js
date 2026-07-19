@@ -229,6 +229,24 @@ async function importCSV(buffer, category, options = {}) {
         console.log(`[csv] skip record (no title): keys=${Object.keys(r).slice(0, 5).join(',')}`);
         continue;
       }
+
+      // Deduplicate games by IGDB ID first, then by title (re-import safety)
+      if (category === 'games') {
+        const extId = extractExternalId(r);
+        if (extId) {
+          const dbDup = await db.get(
+            "SELECT id FROM library_items WHERE category = 'games' AND external_id = ?",
+            [extId]
+          );
+          if (dbDup) continue;
+        } else {
+          const dbDup = await db.get(
+            "SELECT id FROM library_items WHERE category = 'games' AND LOWER(title) = LOWER(?)",
+            [title]
+          );
+          if (dbDup) continue;
+        }
+      }
     }
 
     try {
