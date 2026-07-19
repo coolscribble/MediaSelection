@@ -72,60 +72,76 @@ async function getMBCoverUrl(mbid) {
   } catch { return null; }
 }
 
-async function syncAOTY() {
-  const albums = await db.all(
-    "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'albums'"
-  );
+async function syncAOTY({ itemId } = {}) {
+  const query = itemId
+    ? "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'albums' AND id = ?"
+    : "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'albums'";
+  const albums = itemId
+    ? await db.all(query, [itemId])
+    : await db.all(query);
 
   let updated = 0, skipped = 0;
   for (const album of albums) {
     const meta = JSON.parse(album.metadata || '{}');
     const artist = meta.artist || meta.Artist || '';
 
-    let result = await searchITunes(artist, album.title);
     let thumb = null;
     let merged = { ...meta };
 
-    if (result) {
-      thumb = buildCoverUrl(result.artworkUrl100);
-      merged = {
-        ...meta,
-        itunes_id: result.collectionId,
-        artist:    result.artistName  ?? meta.artist,
-        year:      result.releaseDate ? result.releaseDate.slice(0, 4) : meta.year,
-        genre:     result.primaryGenreName ?? meta.genre,
-      };
-    }
-
-    // Deezer fallback — better coverage for non-English or independent albums
-    if (!thumb) {
-      const dz = await searchDeezer(artist, album.title);
-      if (dz) {
-        thumb = dz.cover_xl || dz.cover_big || null;
+    // 1. MusicBrainz + Cover Art Archive (primary — comprehensive, free)
+    const mbResult = await searchMusicBrainz(artist, album.title);
+    if (mbResult?.id) {
+      await new Promise(res => setTimeout(res, 1000)); // MusicBrainz rate limit: 1 req/s
+      thumb = await getMBCoverUrl(mbResult.id);
+      if (thumb) {
         merged = {
           ...meta,
-          deezer_id: dz.id,
-          artist:    dz.artist?.name ?? meta.artist,
+          mb_id: mbResult.id,
+          artist: mbResult['artist-credit']?.[0]?.name ?? meta.artist,
         };
       }
     }
 
-    // MusicBrainz + Cover Art Archive as final fallback
+    // 2. Deezer (second — good coverage for mainstream and non-English)
     if (!thumb) {
-      const mbResult = await searchMusicBrainz(artist, album.title);
-      if (mbResult?.id) {
-        await new Promise(res => setTimeout(res, 1000)); // MusicBrainz rate limit: 1 req/s
-        thumb = await getMBCoverUrl(mbResult.id);
+      const dz = await searchDeezer(artist, album.title);
+      if (dz) {
+        thumb = dz.cover_xl || dz.cover_big || null;
         if (thumb) {
-          merged = { ...meta, mb_id: mbResult.id, artist: mbResult['artist-credit']?.[0]?.name ?? meta.artist };
+          merged = {
+            ...meta,
+            deezer_id: dz.id,
+            artist: dz.artist?.name ?? meta.artist,
+          };
+        }
+      }
+    }
+
+    // 3. iTunes (fallback — best metadata even if lower coverage for niche albums)
+    if (!thumb) {
+      const result = await searchITunes(artist, album.title);
+      if (result) {
+        thumb = buildCoverUrl(result.artworkUrl100);
+        if (thumb) {
+          merged = {
+            ...meta,
+            itunes_id: result.collectionId,
+            artist:    result.artistName  ?? meta.artist,
+            year:      result.releaseDate ? result.releaseDate.slice(0, 4) : meta.year,
+            genre:     result.primaryGenreName ?? meta.genre,
+          };
         }
       }
     }
 
     if (!thumb) { skipped++; continue; }
 
-    const localThumb = await cacheImage(String(album.id), thumb ?? album.thumbnail_url);
-    const extId = result ? String(result.collectionId) : (merged.deezer_id ? String(merged.deezer_id) : album.external_id);
+    const localThumb = await cacheImage(String(album.id), thumb);
+    const extId = merged.itunes_id ? String(merged.itunes_id)
+      : merged.deezer_id ? String(merged.deezer_id)
+      : merged.mb_id ? String(merged.mb_id)
+      : album.external_id;
+
     await db.run(
       'UPDATE library_items SET thumbnail_url = ?, metadata = ?, external_id = ? WHERE id = ?',
       [localThumb, JSON.stringify(merged), extId, album.id]

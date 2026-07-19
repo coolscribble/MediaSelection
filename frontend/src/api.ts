@@ -43,11 +43,24 @@ export const fetchGoogleBooksCovers = () => call('/api/sync/googlebooks', { meth
 export const getSimklPin    = () => call('/api/sync/simkl/pin')
 export const pollSimklPin   = (uc: string) => call(`/api/sync/simkl/pin/${uc}`)
 
-export const importCSV = async (category: string, file: File, platforms?: string[]) => {
+export const importCSV = async (category: string, file: File, platforms?: string[], acquisitionTypes?: string[]) => {
   const form = new FormData()
   form.append('file', file)
   if (platforms && platforms.length > 0) form.append('platforms', JSON.stringify(platforms))
+  if (acquisitionTypes && acquisitionTypes.length > 0) form.append('acquisitionTypes', JSON.stringify(acquisitionTypes))
   return call(`/api/import/csv/${category}`, { method: 'POST', body: form })
+}
+
+export const refreshCategoryCovers = (category: string) =>
+  call(`/api/sync/covers/${category}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
+
+export const refreshItemCover = (category: string, itemId: number) =>
+  call(`/api/sync/covers/${category}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ itemId }) })
+
+export const previewCSVImport = async (category: string, file: File) => {
+  const form = new FormData()
+  form.append('file', file)
+  return call(`/api/import/preview/${category}`, { method: 'POST', body: form })
 }
 
 export const updateOngoingProgress = (id: number, watched_progress: number) =>

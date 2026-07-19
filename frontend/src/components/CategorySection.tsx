@@ -53,7 +53,9 @@ export default function CategorySection({ category, label, icon, slots, queueMod
             <button className="btn-secondary" onClick={() => setQueueOpen(true)} title="Manage queue">📋 Queue</button>
           )}
           {!queueMode && (
-            <button className="btn-secondary" onClick={() => setLibOpen(true)} title="Library">📚</button>
+            <button className="btn-secondary" onClick={() => setLibOpen(true)} title="Open Library" style={{ padding: '6px 14px', fontSize: 13 }}>
+            📚 Library
+          </button>
           )}
           <button
             className={confirmClear ? 'btn-danger' : 'btn-ghost'}

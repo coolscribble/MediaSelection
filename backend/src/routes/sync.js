@@ -66,6 +66,20 @@ router.post('/googlebooks', async (req, res) => {
   catch (e) { res.status(500).json({ error: e.message }) }
 });
 
+// Refresh covers for a whole category, or a single item if itemId is in body
+router.post('/covers/:category', async (req, res) => {
+  const { category } = req.params;
+  const { itemId } = req.body || {};
+  const opts = itemId ? { itemId: Number(itemId) } : {};
+  try {
+    if (category === 'games') res.json(await syncIGDB(opts));
+    else if (category === 'albums') res.json(await syncAOTY(opts));
+    else if (category === 'comics') res.json(await syncGoogleBooks(opts));
+    else if (category === 'anime' || category === 'manga') res.json(await syncAniList());
+    else res.json({ updated: 0, skipped: 0 });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Refresh metadata (episode counts, airing info, IGDB covers) for all existing items
 router.post('/update-metadata', async (req, res) => {
   const result = {};

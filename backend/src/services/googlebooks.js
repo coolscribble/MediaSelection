@@ -39,27 +39,56 @@ function titleSlug(title) {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 80);
 }
 
-async function syncGoogleBooks() {
-  const comics = await db.all(
-    "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'comics'"
-  );
+async function searchWikipedia(title) {
+  try {
+    const r = await fetch(
+      `https://en.wikipedia.org/w/api.php?action=query&titles=${encodeURIComponent(title)}&prop=pageimages&format=json&pithumbsize=600&redirects=1&origin=*`,
+      { headers: { 'User-Agent': 'MediaPicker/1.0' } }
+    );
+    if (!r.ok) return null;
+    const data = await r.json();
+    const pages = data.query?.pages || {};
+    const page = Object.values(pages)[0];
+    return (page?.thumbnail?.source) || null;
+  } catch { return null; }
+}
+
+async function searchInternetArchive(title) {
+  try {
+    const r = await fetch(
+      `https://archive.org/advancedsearch.php?q=title:(${encodeURIComponent(title)})+mediatype:texts&fl[]=identifier&rows=3&output=json`,
+      { headers: { 'User-Agent': 'MediaPicker/1.0' } }
+    );
+    if (!r.ok) return null;
+    const data = await r.json();
+    const id = data.response?.docs?.[0]?.identifier;
+    return id ? `https://archive.org/services/img/${id}` : null;
+  } catch { return null; }
+}
+
+async function syncGoogleBooks({ itemId } = {}) {
+  const query = itemId
+    ? "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'comics' AND id = ?"
+    : "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'comics'";
+  const comics = itemId
+    ? await db.all(query, [itemId])
+    : await db.all(query);
 
   let updated = 0, skipped = 0;
   for (const comic of comics) {
     const result = await searchGoogleBooks(comic.title);
     let thumb = result ? buildCoverUrl(result) : null;
-    if (!thumb) {
-      thumb = await searchOpenLibrary(comic.title);
-    }
+    if (!thumb) thumb = await searchOpenLibrary(comic.title);
+    if (!thumb) thumb = await searchWikipedia(comic.title);
+    if (!thumb) thumb = await searchInternetArchive(comic.title);
     if (!thumb) { skipped++; continue; }
 
-    // Use a title-slug key so cached covers survive CSV re-imports (new IDs, same title)
     const localThumb = await cacheImage(`comics_${titleSlug(comic.title)}`, thumb);
     const meta = JSON.parse(comic.metadata || '{}');
-    const vi = result.volumeInfo || {};
+    const vi = result?.volumeInfo || {};
     const merged = {
       ...meta,
-      google_books_id: result.id,
+      ...(result?.id && { google_books_id: result.id }),
       ...(vi.authors?.length && { author: vi.authors[0] }),
       ...(vi.publishedDate && { year: vi.publishedDate.slice(0, 4) }),
       ...(vi.publisher && { publisher: vi.publisher }),

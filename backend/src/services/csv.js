@@ -54,6 +54,8 @@ function buildMetadata(r) {
   if (artist) meta.artist = artist;
   const year = r['Year'] || r['year'] || r['Release year'] || r['release year'] || r['Date'] || r['date'];
   if (year) meta.year = year;
+  // Acquisition type — detected dynamically; stored for filtering display
+  if (r['_acquisition_type']) meta.acquisition_type = r['_acquisition_type'];
   return meta;
 }
 
@@ -95,6 +97,39 @@ function normalizeComicsTitle(t) {
   return t.replace(/\s*#\d+\b.*$/, '').trim();
 }
 
+// Known acquisition-type values to detect which CSV column holds them
+const ACQUISITION_HINTS = ['physical', 'digital', 'psn', 'steam', 'gog', 'epic', 'xbox', 'nintendo', 'retro achievements', 'ea app', 'ubisoft', 'battlenet', 'humble', 'itch.io', 'game pass', 'ps plus', 'ps now', 'physical copy', 'disc'];
+
+function detectAcquisitionColumn(records) {
+  const sample = records.slice(0, 100);
+  const colScores = {};
+  for (const r of sample) {
+    for (const [col, val] of Object.entries(r)) {
+      if (!val) continue;
+      const lv = String(val).toLowerCase();
+      if (ACQUISITION_HINTS.some(h => lv === h || lv.startsWith(h))) {
+        colScores[col] = (colScores[col] || 0) + 1;
+      }
+    }
+  }
+  const sorted = Object.entries(colScores).sort((a, b) => b[1] - a[1]);
+  return sorted[0]?.[0] || null;
+}
+
+async function previewCSV(buffer, category) {
+  const records = await parseCSV(buffer);
+  const platforms = [...new Set(records.map(r => r['Platform'] || r['platform'] || '').filter(Boolean))].sort();
+  let acquisitionTypes = [];
+  let acquisitionColumn = null;
+  if (category === 'games') {
+    acquisitionColumn = detectAcquisitionColumn(records);
+    if (acquisitionColumn) {
+      acquisitionTypes = [...new Set(records.map(r => r[acquisitionColumn] || '').filter(Boolean))].sort();
+    }
+  }
+  return { platforms, acquisitionTypes, acquisitionColumn };
+}
+
 // Game statuses — shared between importCSV and importQueueCSV
 const GAME_INCLUDE = new Set(['unfinished', 'playing', 'currently playing', 'in progress', 'started', 'owned']);
 const GAME_SKIP    = new Set(['completed', 'beaten', 'mastered', 'abandoned']);
@@ -108,6 +143,12 @@ async function importCSV(buffer, category, options = {}) {
   // Normalise platform filter to lowercase set for case-insensitive matching
   const platformFilter = options.platforms?.length
     ? new Set(options.platforms.map(p => p.toLowerCase()))
+    : null;
+
+  // Detect acquisition type column once for this batch
+  const acquisitionColumn = options.acquisitionTypes?.length ? detectAcquisitionColumn(records) : null;
+  const acquisitionFilter = options.acquisitionTypes?.length
+    ? new Set(options.acquisitionTypes.map(t => t.toLowerCase()))
     : null;
 
   for (const r of records) {
@@ -130,6 +171,16 @@ async function importCSV(buffer, category, options = {}) {
       if (platformFilter) {
         const platform = (r['Platform'] || r['platform'] || '').trim().toLowerCase();
         if (platform && !platformFilter.has(platform)) continue;
+      }
+
+      // Filter by acquisition type (replaces platform filter for source/format filtering)
+      if (acquisitionFilter && acquisitionColumn) {
+        const acqType = (r[acquisitionColumn] || '').toLowerCase().trim();
+        if (acqType && !acquisitionFilter.has(acqType)) continue;
+      }
+      // Inject acquisition type into the record so buildMetadata can pick it up
+      if (acquisitionColumn && r[acquisitionColumn]) {
+        r['_acquisition_type'] = r[acquisitionColumn];
       }
     }
 
@@ -226,4 +277,4 @@ async function importQueueCSV(buffer, category) {
   return count;
 }
 
-module.exports = { importCSV, importQueueCSV };
+module.exports = { importCSV, importQueueCSV, previewCSV };

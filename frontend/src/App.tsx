@@ -1,12 +1,18 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { CATEGORIES, CATEGORY_LABELS, CATEGORY_ICONS, SlotsData, Settings } from './types'
-import { getSlots, getSettings, getStats, updateMetadata, fetchIGDBCovers, fetchAOTYCovers, fetchGoogleBooksCovers } from './api'
+import { getSlots, getSettings, getStats, updateMetadata, refreshCategoryCovers } from './api'
 import { toast, dismiss } from './notifications'
 import CategorySection from './components/CategorySection'
 import SettingsModal from './components/SettingsModal'
 import SyncModal from './components/SyncModal'
 import OngoingSection from './components/OngoingSection'
 import ToastContainer from './components/ToastContainer'
+
+const COVER_OPTIONS = [
+  { key: 'games',  label: '🎮 Games (IGDB)',                   cat: 'games'  },
+  { key: 'albums', label: '🎵 Albums (MusicBrainz/Deezer/iTunes)', cat: 'albums' },
+  { key: 'comics', label: '💬 Comics (Google Books/Open Library)',   cat: 'comics' },
+]
 
 export default function App() {
   const [slots, setSlots] = useState<SlotsData | null>(null)
@@ -17,9 +23,10 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [syncOpen, setSyncOpen] = useState(false)
   const [updating, setUpdating] = useState(false)
-  const [igdbBusy, setIgdbBusy] = useState(false)
-  const [aotyBusy, setAotyBusy] = useState(false)
-  const [cvBusy, setCvBusy] = useState(false)
+  const [coversOpen, setCoversOpen] = useState(false)
+  const [coversSelected, setCoversSelected] = useState<Record<string, boolean>>({ games: true, albums: true, comics: true })
+  const [coversBusy, setCoversBusy] = useState(false)
+  const coversRef = useRef<HTMLDivElement>(null)
 
   const refresh = useCallback(async () => {
     try {
@@ -35,6 +42,18 @@ export default function App() {
 
   useEffect(() => { refresh() }, [refresh])
 
+  // Close covers popup when clicking outside
+  useEffect(() => {
+    if (!coversOpen) return
+    const handler = (e: MouseEvent) => {
+      if (coversRef.current && !coversRef.current.contains(e.target as Node)) {
+        setCoversOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [coversOpen])
+
   const handleUpdate = async () => {
     setUpdating(true)
     const tid = toast('Updating metadata from APIs…', 'info', true)
@@ -46,60 +65,36 @@ export default function App() {
     } catch (e: unknown) {
       dismiss(tid)
       toast((e instanceof Error ? e.message : 'Update failed'), 'error')
-    } finally {
-      setUpdating(false)
-    }
+    } finally { setUpdating(false) }
   }
 
-  const handleGoogleBooks = async () => {
-    setCvBusy(true)
-    const tid = toast('Fetching comic covers via Google Books…', 'info', true)
+  const handleCovers = async () => {
+    const toRun = COVER_OPTIONS.filter(o => coversSelected[o.key])
+    if (!toRun.length) { setCoversOpen(false); return }
+    setCoversBusy(true)
+    setCoversOpen(false)
+    const tid = toast(`Updating covers for: ${toRun.map(o => o.key).join(', ')}…`, 'info', true)
     try {
-      const r = await fetchGoogleBooksCovers() as { updated?: number; skipped?: number; error?: string }
-      if (r.error) throw new Error(r.error)
-      await refresh()
+      const results = await Promise.allSettled(toRun.map(o => refreshCategoryCovers(o.cat)))
       dismiss(tid)
-      toast(`Comic covers: ${r.updated ?? 0} updated, ${r.skipped ?? 0} not found`, 'success')
+      const parts: string[] = []
+      results.forEach((r, i) => {
+        const label = toRun[i].key
+        if (r.status === 'fulfilled') {
+          const v = r.value as { updated?: number; skipped?: number; deleted?: number }
+          let msg = `${label}: ${v.updated ?? 0} updated`
+          if ((v.deleted ?? 0) > 0) msg += `, ${v.deleted} DLC removed`
+          parts.push(msg)
+        } else {
+          parts.push(`${label}: failed`)
+        }
+      })
+      toast(parts.join(' · '), 'success')
+      await refresh()
     } catch (e: unknown) {
       dismiss(tid)
-      toast((e instanceof Error ? e.message : 'Google Books failed'), 'error')
-    } finally {
-      setCvBusy(false)
-    }
-  }
-
-  const handleAOTY = async () => {
-    setAotyBusy(true)
-    const tid = toast('Fetching Album of the Year covers…', 'info', true)
-    try {
-      const r = await fetchAOTYCovers() as { updated?: number; skipped?: number; error?: string }
-      if (r.error) throw new Error(r.error)
-      await refresh()
-      dismiss(tid)
-      toast(`Album covers loaded: ${r.updated ?? 0} updated, ${r.skipped ?? 0} not found`, 'success')
-    } catch (e: unknown) {
-      dismiss(tid)
-      toast((e instanceof Error ? e.message : 'AOTY failed'), 'error')
-    } finally {
-      setAotyBusy(false)
-    }
-  }
-
-  const handleIGDB = async () => {
-    setIgdbBusy(true)
-    const tid = toast('Fetching IGDB game covers…', 'info', true)
-    try {
-      const r = await fetchIGDBCovers() as { updated?: number; skipped?: number; error?: string }
-      if (r.error) throw new Error(r.error)
-      await refresh()
-      dismiss(tid)
-      toast(`Covers loaded: ${r.updated ?? 0} updated, ${r.skipped ?? 0} not found`, 'success')
-    } catch (e: unknown) {
-      dismiss(tid)
-      toast((e instanceof Error ? e.message : 'IGDB failed'), 'error')
-    } finally {
-      setIgdbBusy(false)
-    }
+      toast(e instanceof Error ? e.message : 'Cover update failed', 'error')
+    } finally { setCoversBusy(false) }
   }
 
   if (loading) return <div className="loading">Loading…</div>
@@ -109,15 +104,43 @@ export default function App() {
       <header className="header">
         <h1>🎲 Media Picker</h1>
         <div className="header-actions">
-          <button className="btn-ghost" onClick={handleGoogleBooks} disabled={cvBusy} title="Fetch comic volume covers via Google Books (free, no key needed)">
-            {cvBusy ? '…' : '💬 Covers'}
-          </button>
-          <button className="btn-ghost" onClick={handleAOTY} disabled={aotyBusy} title="Fetch album cover art from iTunes">
-            {aotyBusy ? '…' : '🎵 Covers'}
-          </button>
-          <button className="btn-ghost" onClick={handleIGDB} disabled={igdbBusy} title="Fetch game cover art from IGDB (WebP)">
-            {igdbBusy ? '…' : '🎮 Covers'}
-          </button>
+          {/* Covers popup */}
+          <div ref={coversRef} style={{ position: 'relative' }}>
+            <button
+              className="btn-ghost"
+              onClick={() => setCoversOpen(v => !v)}
+              disabled={coversBusy}
+              title="Update cover art"
+            >
+              {coversBusy ? '…' : '🖼 Covers ▾'}
+            </button>
+            {coversOpen && (
+              <div className="covers-popup">
+                <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Update covers for:
+                </div>
+                {COVER_OPTIONS.map(opt => (
+                  <label key={opt.key} className="covers-popup-option">
+                    <input
+                      type="checkbox"
+                      checked={coversSelected[opt.key] ?? false}
+                      onChange={() => setCoversSelected(prev => ({ ...prev, [opt.key]: !prev[opt.key] }))}
+                    />
+                    <span>{opt.label}</span>
+                  </label>
+                ))}
+                <button
+                  className="btn-primary"
+                  style={{ marginTop: 4, width: '100%' }}
+                  onClick={handleCovers}
+                  disabled={!Object.values(coversSelected).some(Boolean)}
+                >
+                  Update Selected
+                </button>
+              </div>
+            )}
+          </div>
+
           <button className="btn-ghost" onClick={handleUpdate} disabled={updating} title="Refresh episode counts and airing dates from APIs">
             {updating ? '…' : '⟳ Update'}
           </button>
@@ -126,14 +149,12 @@ export default function App() {
         </div>
       </header>
 
-      {/* Finish counter — always visible; shows ep/ch count for trackable categories */}
       <div className="stats-bar">
         <span className="stats-label">Finished:</span>
         {CATEGORIES.map(c => {
           const count = statCounts[c] ?? 0
           const prog  = statProgress[c] ?? 0
           const unit  = c === 'manga' || c === 'comics' ? 'ch' : c === 'series' || c === 'anime' ? 'ep' : null
-          // albums and movies have no sub-unit to track
           return (
             <span key={c} className="stats-item">
               {CATEGORY_ICONS[c]} {count} {CATEGORY_LABELS[c]}

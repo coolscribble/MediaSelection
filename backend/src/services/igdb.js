@@ -28,7 +28,7 @@ async function getAccessToken() {
   return cachedToken;
 }
 
-const IGDB_FIELDS = 'fields name,cover.url,version_parent.cover.url,first_release_date,genres.name,platforms.name,total_rating;';
+const IGDB_FIELDS = 'fields name,cover.url,version_parent.cover.url,category,first_release_date,genres.name,platforms.name,total_rating;';
 
 async function igdbRequest(body, clientId, token) {
   const r = await fetch('https://api.igdb.com/v4/games', {
@@ -56,21 +56,30 @@ async function searchByTitle(title, clientId, token) {
   return igdbRequest(`${IGDB_FIELDS} search "${safe}"; limit 1;`, clientId, token);
 }
 
-async function syncIGDB() {
+async function syncIGDB({ itemId } = {}) {
   const { clientId } = await getCredentials();
   const token = await getAccessToken();
 
-  const games = await db.all(
-    "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'games'"
-  );
+  const query = itemId
+    ? "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'games' AND id = ?"
+    : "SELECT id, title, external_id, thumbnail_url, metadata FROM library_items WHERE category = 'games'";
+  const games = itemId ? await db.all(query, [itemId]) : await db.all(query);
 
-  let updated = 0, skipped = 0;
+  let updated = 0, skipped = 0, deleted = 0;
   for (const game of games) {
     // Prefer the IGDB ID from the CSV (exact match); fall back to title search
     const result = game.external_id
       ? await lookupById(game.external_id, clientId, token)
       : await searchByTitle(game.title, clientId, token);
     if (!result) { skipped++; continue; }
+
+    // Remove DLC (1) and expansions (2) from the library — they should not be tracked separately
+    if (result.category === 1 || result.category === 2) {
+      await db.run('UPDATE slots SET item_id = NULL, is_locked = 0 WHERE item_id = ?', [game.id]);
+      await db.run('DELETE FROM library_items WHERE id = ?', [game.id]);
+      deleted++;
+      continue;
+    }
 
     // Build cover URL — cover_big size, WebP format for smaller file size
     const rawUrl = result.cover?.url || result.version_parent?.cover?.url || null;
@@ -105,7 +114,7 @@ async function syncIGDB() {
     await new Promise(res => setTimeout(res, 250));
   }
 
-  return { updated, skipped };
+  return { updated, skipped, deleted };
 }
 
 module.exports = { syncIGDB };

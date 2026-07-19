@@ -62,6 +62,15 @@ export default function SlotCard({ slot, queueMode, onRefresh }: Props) {
         {!isEmpty && slot.category === 'albums' && typeof slot.metadata?.artist === 'string' && (
           <span className="slot-subtitle">{slot.metadata.artist}</span>
         )}
+        {!isEmpty && slot.category === 'games' && (
+          <span className="slot-subtitle">
+            {Array.isArray(slot.metadata?.platforms)
+              ? (slot.metadata.platforms as string[]).slice(0, 2).join(', ')
+              : typeof slot.metadata?.platform === 'string'
+                ? slot.metadata.platform
+                : ''}
+          </span>
+        )}
         {!isEmpty && (
           <>
             {/* Progress only for categories that track episodes/chapters — not movies, games, or albums */}
