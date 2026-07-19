@@ -188,9 +188,27 @@ export default function SettingsModal({ onClose }: Props) {
 
               <div className="sync-section">
                 <h3>💬 Comics cover art</h3>
-                <p style={{ fontSize: 12, color: 'var(--text2)' }}>
+                <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 8 }}>
                   Uses the Google Books API — no API key needed.
                   Import your comics via CSV, then click <strong>💬 Covers</strong> in the header to fetch artwork automatically.
+                </p>
+                <h4 style={{ margin: '12px 0 6px', fontSize: 13 }}>ComicVine (better matching)</h4>
+                <div className="form-group">
+                  <label>API Key</label>
+                  <input
+                    type="password"
+                    value={comicvineApiKey}
+                    onChange={e => setComicvineApiKey(e.target.value)}
+                    placeholder={s.comicvine_api_set ? '••••••••• (saved)' : 'paste key from comicvine.gamespot.com/api'}
+                  />
+                </div>
+                <div className="sync-row">
+                  <span className={`sync-status${s.comicvine_api_set ? ' ok' : ''}`}>
+                    {s.comicvine_api_set ? '✓ Key saved' : '✗ Not configured'}
+                  </span>
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>
+                  Get a free API key at <strong>comicvine.gamespot.com/api</strong>. Used for the 🎨 ComicVine Sync button in the library.
                 </p>
               </div>
 
