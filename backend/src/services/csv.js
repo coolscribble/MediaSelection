@@ -138,18 +138,36 @@ function detectServiceColumns(records) {
   return results;
 }
 
+// Column header names that indicate a Retro Achievements tracking column
+const RA_HEADERS = new Set(['retro achievements', 'retroachievements', 'ra', 'achievement service', 'retro']);
+
 async function previewCSV(buffer, category) {
   const records = await parseCSV(buffer);
 
   if (category !== 'games' || records.length === 0) {
-    return { serviceValues: [], filterColumns: [] };
+    return { platforms: [], serviceValues: [], filterColumns: [], hasRetroAchievements: false };
   }
 
+  const headers = Object.keys(records[0]);
+
+  // Unique platform values from the Platform column
+  const platformCol = ['Platform', 'platform', 'PLATFORM', 'Gaming System', 'System'].find(h => records[0][h] !== undefined);
+  const platforms = platformCol
+    ? [...new Set(records.map(r => (r[platformCol] || '').trim()).filter(Boolean))].sort()
+    : [];
+
+  // Service/format columns (Physical, PSN Network, Steam…)
   const filterColumns = detectServiceColumns(records);
-  // Flat deduplicated list of all service values across all detected columns
   const serviceValues = [...new Set(filterColumns.flatMap(c => c.values))].sort();
 
-  return { serviceValues, filterColumns };
+  // Retro Achievements detected by column name — values are numeric (achievement count)
+  const raCol = headers.find(h => RA_HEADERS.has(h.toLowerCase()));
+  const hasRetroAchievements = !!raCol && records.some(r => {
+    const v = (r[raCol] || '').trim();
+    return v && v !== '0';
+  });
+
+  return { platforms, serviceValues, filterColumns, hasRetroAchievements };
 }
 
 // Game statuses — shared between importCSV and importQueueCSV
@@ -159,6 +177,7 @@ const GAME_SKIP    = new Set(['completed', 'beaten', 'mastered', 'abandoned']);
 async function importCSV(buffer, category, options = {}) {
   const records = await parseCSV(buffer);
   let count = 0;
+  let refreshed = 0;
   // Used for within-batch deduplication when importing comics
   const seenTitles = new Set();
 
@@ -200,6 +219,26 @@ async function importCSV(buffer, category, options = {}) {
       if (explicitSkip && !explicitInclude) {
         console.log(`[csv] SKIP (done): "${_gameTitle}" completion="${completion}" status="${status}"`);
         continue;
+      }
+
+      // Platform filter — only import games from selected gaming systems
+      if (platformFilter) {
+        const platform = (r['Platform'] || r['platform'] || '').trim().toLowerCase();
+        if (!platformFilter.has(platform)) {
+          console.log(`[csv] SKIP (platform filter): "${_gameTitle}" platform="${r['Platform'] || ''}"`);
+          continue;
+        }
+      }
+
+      // Retro Achievements filter — only import games that have RA tracking data
+      if (options.retro) {
+        const raHeadersInRow = Object.keys(r);
+        const raCol = raHeadersInRow.find(h => RA_HEADERS.has(h.toLowerCase()));
+        const raVal = raCol ? (r[raCol] || '').trim() : '';
+        if (!raVal || raVal === '0') {
+          console.log(`[csv] SKIP (retro filter): "${_gameTitle}"`);
+          continue;
+        }
       }
 
       // Filter by acquisition type — checks ALL detected service/format columns.
@@ -262,14 +301,19 @@ async function importCSV(buffer, category, options = {}) {
 
       // Deduplicate games by IGDB ID first, then by title (re-import safety)
       if (category === 'games') {
-        const extId = extractExternalId(r);
-        if (extId) {
+        const extIdForDup = extractExternalId(r);
+        if (extIdForDup) {
           const dbDup = await db.get(
             "SELECT id FROM library_items WHERE category = 'games' AND external_id = ?",
-            [extId]
+            [extIdForDup]
           );
           if (dbDup) {
-            console.log(`[csv] SKIP (already in library, extId=${extId}): "${title}"`);
+            await db.run(
+              'UPDATE library_items SET title = ?, metadata = ? WHERE id = ?',
+              [title.trim(), JSON.stringify(buildMetadata(r)), dbDup.id]
+            );
+            console.log(`[csv] REFRESH (extId=${extIdForDup}): "${title}"`);
+            refreshed++;
             continue;
           }
         } else {
@@ -278,7 +322,12 @@ async function importCSV(buffer, category, options = {}) {
             [title]
           );
           if (dbDup) {
-            console.log(`[csv] SKIP (already in library, title match): "${title}"`);
+            await db.run(
+              'UPDATE library_items SET title = ?, metadata = ? WHERE id = ?',
+              [title.trim(), JSON.stringify(buildMetadata(r)), dbDup.id]
+            );
+            console.log(`[csv] REFRESH (title match): "${title}"`);
+            refreshed++;
             continue;
           }
         }
@@ -310,7 +359,7 @@ async function importCSV(buffer, category, options = {}) {
       console.warn(`[csv] DB error inserting "${title}": ${e.message}`);
     }
   }
-  return count;
+  return { imported: count, refreshed };
 }
 
 async function importQueueCSV(buffer, category) {

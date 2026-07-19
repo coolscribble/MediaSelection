@@ -14,8 +14,10 @@ interface Props {
 const COVER_CATEGORIES: Category[] = ['games', 'albums', 'comics', 'anime', 'manga']
 
 interface CSVPreview {
+  platforms: string[]
   serviceValues: string[]
   filterColumns: { column: string; values: string[] }[]
+  hasRetroAchievements: boolean
 }
 
 export default function LibraryModal({ category, label, onClose, onRefresh }: Props) {
@@ -31,6 +33,8 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
   const [csvFile, setCsvFile] = useState<File | null>(null)
   const [csvPreview, setCsvPreview] = useState<CSVPreview | null>(null)
   const [selectedAcqTypes, setSelectedAcqTypes] = useState<Set<string>>(new Set())
+  const [selectedPlatforms, setSelectedPlatforms] = useState<Set<string>>(new Set())
+  const [retroOnly, setRetroOnly] = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -103,11 +107,12 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
       try {
         const preview = await previewCSVImport(category, file) as CSVPreview
         setCsvPreview(preview)
-        // default: all service types selected
         setSelectedAcqTypes(new Set(preview.serviceValues))
+        setSelectedPlatforms(new Set(preview.platforms))
+        setRetroOnly(false)
       } catch {
         // Fallback: import without filter
-        setCsvPreview({ serviceValues: [], filterColumns: [] })
+        setCsvPreview({ platforms: [], serviceValues: [], filterColumns: [], hasRetroAchievements: false })
       } finally { setPreviewLoading(false) }
     } else {
       // Non-games: import immediately
@@ -127,11 +132,15 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
     if (!csvFile) return
     setBusy(true)
     try {
+      const platformArr = selectedPlatforms.size > 0 && csvPreview?.platforms.length && selectedPlatforms.size < csvPreview.platforms.length
+        ? [...selectedPlatforms]
+        : undefined
       const acqArr = selectedAcqTypes.size > 0 && csvPreview?.serviceValues.length
         ? [...selectedAcqTypes]
         : undefined
-      const result = await importCSV(category, csvFile, undefined, acqArr) as { imported: number }
-      setMsg(`Imported ${result.imported} items`)
+      const result = await importCSV(category, csvFile, platformArr, acqArr, retroOnly) as { imported: number; refreshed: number }
+      const refreshedStr = result.refreshed > 0 ? `, ${result.refreshed} refreshed` : ''
+      setMsg(`Imported ${result.imported} new${refreshedStr}`)
       setCsvFile(null); setCsvPreview(null)
       load(); onRefresh()
     } catch (err: unknown) {
@@ -143,6 +152,14 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
     setSelectedAcqTypes(prev => {
       const next = new Set(prev)
       if (next.has(t)) next.delete(t); else next.add(t)
+      return next
+    })
+  }
+
+  const togglePlatform = (p: string) => {
+    setSelectedPlatforms(prev => {
+      const next = new Set(prev)
+      if (next.has(p)) next.delete(p); else next.add(p)
       return next
     })
   }
@@ -200,9 +217,24 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
                   <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>
                     Import from: <span style={{ color: 'var(--text2)' }}>{csvFile.name}</span>
                   </div>
+                  {csvPreview && csvPreview.platforms.length > 0 && (
+                    <>
+                      <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 6 }}>
+                        Filter by gaming system (uncheck to exclude):
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+                        {csvPreview.platforms.map(p => (
+                          <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12, cursor: 'pointer', background: 'var(--surface)', padding: '4px 10px', borderRadius: 6, border: selectedPlatforms.has(p) ? '1px solid var(--accent)' : '1px solid var(--border)' }}>
+                            <input type="checkbox" checked={selectedPlatforms.has(p)} onChange={() => togglePlatform(p)} />
+                            {p}
+                          </label>
+                        ))}
+                      </div>
+                    </>
+                  )}
                   {csvPreview && csvPreview.serviceValues.length > 0 ? (
                     <>
-                      <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 8 }}>
+                      <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 6 }}>
                         Filter by format / digital service (uncheck to exclude):
                       </div>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
@@ -217,6 +249,14 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
                   ) : (
                     <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
                       No acquisition type filter detected — will import all games.
+                    </div>
+                  )}
+                  {csvPreview?.hasRetroAchievements && (
+                    <div style={{ marginBottom: 12 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
+                        <input type="checkbox" checked={retroOnly} onChange={e => setRetroOnly(e.target.checked)} />
+                        <span>Only import games with Retro Achievements data</span>
+                      </label>
                     </div>
                   )}
                   <div style={{ display: 'flex', gap: 8 }}>

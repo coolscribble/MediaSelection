@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const { importCSV, previewCSV } = require('../services/csv');
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 const VALID = ['movies', 'series', 'anime', 'manga', 'games', 'comics', 'albums'];
 
 // Preview — parse CSV and return unique filterable values without importing
@@ -26,8 +26,9 @@ router.post('/csv/:category', upload.single('file'), async (req, res) => {
     if (req.body.acquisitionTypes) {
       try { acquisitionTypes = JSON.parse(req.body.acquisitionTypes); } catch {}
     }
-    const count = await importCSV(req.file.buffer, req.params.category, { platforms, acquisitionTypes });
-    res.json({ imported: count });
+    const retro = req.body.retro === 'true';
+    const result = await importCSV(req.file.buffer, req.params.category, { platforms, acquisitionTypes, retro });
+    res.json(result);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
