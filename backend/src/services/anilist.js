@@ -3,6 +3,12 @@ const { cacheImage } = require('./imageCache');
 
 const ANILIST_API = 'https://graphql.anilist.co';
 
+function fetchWithTimeout(url, options = {}, ms = 20000) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  return fetch(url, { ...options, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+}
+
 const LIST_QUERY = `
 query ($userName: String, $type: MediaType, $status: MediaListStatus) {
   MediaListCollection(userName: $userName, type: $type, status: $status) {
@@ -40,7 +46,7 @@ async function syncAniList(userId) {
 
   for (const type of ['ANIME', 'MANGA']) {
     for (const status of states) {
-      const res = await fetch(ANILIST_API, {
+      const res = await fetchWithTimeout(ANILIST_API, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         body: JSON.stringify({ query: LIST_QUERY, variables: { userName: userRow.value, type, status } }),
@@ -100,7 +106,7 @@ async function updateOngoingAiringInfo(userId) {
     const ids = batch.map(r => Number(r.external_id)).filter(n => !isNaN(n));
     if (!ids.length) continue;
 
-    const res = await fetch(ANILIST_API, {
+    const res = await fetchWithTimeout(ANILIST_API, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ query: AIRING_QUERY, variables: { ids } }),

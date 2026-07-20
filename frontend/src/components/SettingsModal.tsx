@@ -43,6 +43,7 @@ export default function SettingsModal({ onClose, username }: Props) {
   const [polling, setPolling] = useState(false)
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
   const [psnNpsso, setPsnNpsso] = useState('')
   const [psnSkipCompleted, setPsnSkipCompleted] = useState(false)
   const [psnPlatforms, setPsnPlatforms] = useState<string[]>(['PS4', 'PS5'])
@@ -63,22 +64,25 @@ export default function SettingsModal({ onClose, username }: Props) {
   const [tmdbBusy, setTmdbBusy] = useState(false)
 
   useEffect(() => {
-    getSettings().then((data: Settings) => {
-      setS(data)
-      setClientId(data.simkl_client_id)
-      setIgdbClientId(data.igdb_client_id ?? '')
-      setAniUser(data.anilist_username)
-      setMalUser(data.mal_username)
-      setAniStates(data.anilist_states ?? ['PLANNING'])
-      setSimklStates(data.simkl_states ?? ['plantowatch'])
-      setMalAnimeStates(data.mal_anime_states ?? ['plantowatch'])
-      setMalMangaStates(data.mal_manga_states ?? ['plantoread'])
-      setQueueModes(data.queue_modes ?? {})
-      setSaveCoversLocally(data.save_covers_locally ?? false)
-      setPublicProfile(data.public_profile ?? false)
-      setSteamId(data.steam_id ?? '')
-      setXboxGamertag(data.xbox_gamertag ?? '')
-    })
+    getSettings()
+      .then((data: Settings) => {
+        setS(data)
+        setClientId(data.simkl_client_id)
+        setIgdbClientId(data.igdb_client_id ?? '')
+        setAniUser(data.anilist_username)
+        setMalUser(data.mal_username)
+        setAniStates(data.anilist_states ?? ['PLANNING'])
+        setSimklStates(data.simkl_states ?? ['plantowatch'])
+        setMalAnimeStates(data.mal_anime_states ?? ['plantowatch'])
+        setMalMangaStates(data.mal_manga_states ?? ['plantoread'])
+        setQueueModes(data.queue_modes ?? {})
+        setSaveCoversLocally(data.save_covers_locally ?? false)
+        setPublicProfile(data.public_profile ?? false)
+        setSteamId(data.steam_id ?? '')
+        setXboxGamertag(data.xbox_gamertag ?? '')
+      })
+      .catch(() => setMsg('Failed to load settings — check your connection'))
+      .finally(() => setSettingsLoaded(true))
   }, [])
 
   const toggleArr = (arr: string[], val: string) =>
@@ -635,7 +639,9 @@ export default function SettingsModal({ onClose, username }: Props) {
         </div>
         <div className="modal-footer">
           <button className="btn-ghost" onClick={onClose}>Close</button>
-          <button className="btn-primary" onClick={save} disabled={busy}>Save</button>
+          <button className="btn-primary" onClick={save} disabled={busy || !settingsLoaded}>
+            {settingsLoaded ? 'Save' : 'Loading…'}
+          </button>
         </div>
       </div>
     </div>

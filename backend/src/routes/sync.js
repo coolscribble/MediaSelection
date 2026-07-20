@@ -52,7 +52,10 @@ router.post('/simkl', async (req, res) => {
 
 router.post('/anilist', async (req, res) => {
   try { res.json(await syncAniList(req.userId)); }
-  catch (e) { res.status(500).json({ error: e.message }); }
+  catch (e) {
+    const msg = e.name === 'AbortError' ? 'AniList request timed out — their API may be overloaded. Try again in a moment.' : e.message;
+    res.status(500).json({ error: msg });
+  }
 });
 
 router.post('/mal', async (req, res) => {
