@@ -10,8 +10,27 @@ const { requireAuth } = require('./middleware/auth');
 
 const app = express();
 
-// Security headers
-app.use(helmet());
+// Security headers — CSP set manually to avoid helmet adding upgrade-insecure-requests,
+// which breaks image loading on plain HTTP (e.g. localhost).
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use((_req, res, next) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: blob: https: http:",
+      "connect-src 'self'",
+      "font-src 'self' https: data:",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+      "frame-ancestors 'self'",
+    ].join('; ')
+  );
+  next();
+});
 
 // CORS — restrict to configured origin; credentials required for httpOnly cookies
 const allowedOrigin = process.env.ALLOWED_ORIGIN || 'http://localhost:5173';
