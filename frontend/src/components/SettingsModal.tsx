@@ -17,6 +17,7 @@ const DEFAULT_SETTINGS: Settings = {
   igdb_client_id: '', igdb_client_set: false,
   comicvine_api_set: false,
   save_covers_locally: false,
+  public_profile: false,
 }
 
 export default function SettingsModal({ onClose, username }: Props) {
