@@ -3,7 +3,7 @@ import { Category, LibraryItem } from '../types'
 import {
   getLibrary, addLibraryItem, deleteLibraryItem,
   importCSV, refreshCategoryCovers, refreshItemCover, previewCSVImport,
-  updateLibraryItemCover, uploadLibraryItemCover, fetchComicVineCovers,
+  updateLibraryItemCover, updateLibraryItemField, uploadLibraryItemCover, fetchComicVineCovers,
 } from '../api'
 import { toast, dismiss } from '../notifications'
 
@@ -49,6 +49,7 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
   // Cover edit
   const [editingCoverId, setEditingCoverId] = useState<number | null>(null)
   const [editCoverUrl, setEditCoverUrl] = useState('')
+  const [editCvId, setEditCvId] = useState('')
   const [coverBusy, setCoverBusy] = useState(false)
   // ComicVine review mode
   const [reviewMode, setReviewMode] = useState(false)
@@ -158,6 +159,19 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
       load()
     } catch { /* silent */ }
     finally { setCoverBusy(false) }
+  }
+
+  const handleSetCvId = async (itemId: number, cvId: string) => {
+    if (!cvId.trim()) return
+    setCoverBusy(true)
+    try {
+      await updateLibraryItemField(itemId, { external_id: cvId.trim(), clear_review: true })
+      await refreshItemCover(category, itemId)
+      setEditingCoverId(null); setEditCvId('')
+      load(); onRefresh()
+    } catch (e: unknown) {
+      setMsg(e instanceof Error ? e.message : 'Error')
+    } finally { setCoverBusy(false) }
   }
 
   const handlePickCandidate = async (itemId: number, thumb: string | null) => {
@@ -403,10 +417,10 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
                     <div style={{ display: 'flex', gap: 4, flexShrink: 0 }}>
                       <button
                         className="btn-icon"
-                        title="Edit cover"
+                        title="Edit cover / ID"
                         onClick={() => {
-                          if (isEditing) { setEditingCoverId(null); setEditCoverUrl('') }
-                          else { setEditingCoverId(item.id); setEditCoverUrl('') }
+                          if (isEditing) { setEditingCoverId(null); setEditCoverUrl(''); setEditCvId('') }
+                          else { setEditingCoverId(item.id); setEditCoverUrl(''); setEditCvId('') }
                         }}
                         style={{ fontSize: 12 }}
                       >
@@ -431,34 +445,60 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
                     </div>
                   </div>
 
-                  {/* Inline cover edit row */}
+                  {/* Inline edit row */}
                   {isEditing && (
-                    <div style={{ display: 'flex', gap: 6, alignItems: 'center', padding: '6px 8px 8px', background: 'var(--surface2)', borderRadius: '0 0 6px 6px', marginTop: -2, flexWrap: 'wrap' }}>
-                      <input
-                        style={{ flex: 1, minWidth: 160, ...inputStyle }}
-                        placeholder="Paste image URL…"
-                        value={editCoverUrl}
-                        onChange={e => setEditCoverUrl(e.target.value)}
-                        onKeyDown={e => e.key === 'Enter' && handleApplyCoverUrl(item.id, reviewMode)}
-                      />
-                      <button className="btn-secondary" style={{ fontSize: 11, padding: '4px 8px' }}
-                        onClick={() => coverFileRef.current?.click()} disabled={coverBusy}>
-                        📁 File
-                      </button>
-                      <button className="btn-primary" style={{ fontSize: 11, padding: '4px 8px' }}
-                        onClick={() => handleApplyCoverUrl(item.id, reviewMode)} disabled={coverBusy || !editCoverUrl.trim()}>
-                        Apply
-                      </button>
-                      {reviewMode && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '6px 8px 10px', background: 'var(--surface2)', borderRadius: '0 0 6px 6px', marginTop: -2 }}>
+                      {/* Cover URL row */}
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <input
+                          style={{ flex: 1, minWidth: 160, ...inputStyle }}
+                          placeholder="Paste image URL…"
+                          value={editCoverUrl}
+                          onChange={e => setEditCoverUrl(e.target.value)}
+                          onKeyDown={e => e.key === 'Enter' && handleApplyCoverUrl(item.id, reviewMode)}
+                        />
                         <button className="btn-secondary" style={{ fontSize: 11, padding: '4px 8px' }}
-                          onClick={() => handleApplyCoverUrl(item.id, true)} disabled={coverBusy}>
-                          Skip (keep current)
+                          onClick={() => coverFileRef.current?.click()} disabled={coverBusy}>
+                          📁 File
                         </button>
+                        <button className="btn-primary" style={{ fontSize: 11, padding: '4px 8px' }}
+                          onClick={() => handleApplyCoverUrl(item.id, reviewMode)} disabled={coverBusy || !editCoverUrl.trim()}>
+                          Apply cover
+                        </button>
+                        {reviewMode && (
+                          <button className="btn-secondary" style={{ fontSize: 11, padding: '4px 8px' }}
+                            onClick={() => handleApplyCoverUrl(item.id, true)} disabled={coverBusy}>
+                            Skip
+                          </button>
+                        )}
+                        <button className="btn-ghost" style={{ fontSize: 11, padding: '4px 8px' }}
+                          onClick={() => { setEditingCoverId(null); setEditCoverUrl(''); setEditCvId('') }}>
+                          ✕
+                        </button>
+                      </div>
+
+                      {/* ComicVine ID row — comics only */}
+                      {category === 'comics' && (
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 11, color: 'var(--text2)', whiteSpace: 'nowrap' }}>
+                            ComicVine ID{item.external_id ? ` (current: ${item.external_id})` : ' (not set)'}:
+                          </span>
+                          <input
+                            style={{ width: 120, ...inputStyle }}
+                            placeholder="e.g. 18765"
+                            value={editCvId}
+                            onChange={e => setEditCvId(e.target.value.replace(/\D/g, ''))}
+                            onKeyDown={e => e.key === 'Enter' && handleSetCvId(item.id, editCvId)}
+                          />
+                          <button className="btn-primary" style={{ fontSize: 11, padding: '4px 8px' }}
+                            onClick={() => handleSetCvId(item.id, editCvId)} disabled={coverBusy || !editCvId.trim()}>
+                            Set ID & Resync
+                          </button>
+                          <span style={{ fontSize: 10, color: 'var(--text2)' }}>
+                            Find the ID on comicvine.gamespot.com in the volume URL
+                          </span>
+                        </div>
                       )}
-                      <button className="btn-ghost" style={{ fontSize: 11, padding: '4px 8px' }}
-                        onClick={() => { setEditingCoverId(null); setEditCoverUrl('') }}>
-                        ✕
-                      </button>
                     </div>
                   )}
 

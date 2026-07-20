@@ -80,9 +80,14 @@ router.patch('/:id', async (req, res) => {
       [req.params.id, req.userId]
     );
     if (!item) return res.status(404).json({ error: 'Not found' });
-    const { thumbnail_url, clear_review } = req.body;
+    const { thumbnail_url, clear_review, external_id } = req.body;
     const sets = [], vals = [];
     if (thumbnail_url !== undefined) { sets.push('thumbnail_url = ?'); vals.push(thumbnail_url || null); }
+    if (external_id !== undefined) {
+      const idStr = external_id ? String(external_id).trim() : null;
+      if (idStr && !/^\d+$/.test(idStr)) return res.status(400).json({ error: 'ID must be numeric' });
+      sets.push('external_id = ?'); vals.push(idStr || null);
+    }
     if (clear_review) {
       const meta = JSON.parse(item.metadata || '{}');
       delete meta.cv_needs_review;
