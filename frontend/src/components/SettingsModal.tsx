@@ -19,7 +19,7 @@ const DEFAULT_SETTINGS: Settings = {
   save_covers_locally: false,
   public_profile: false,
   tmdb_api_key_set: false, tmdb_session_set: false,
-  steam_api_key_set: false, steam_id: '',
+  steam_id: '',
   xbox_key_set: false, xbox_gamertag: '',
 }
 
@@ -49,7 +49,6 @@ export default function SettingsModal({ onClose, username }: Props) {
   const [psnPlatforms, setPsnPlatforms] = useState<string[]>(['PS4', 'PS5'])
   const [psnMsg, setPsnMsg] = useState('')
   const [psnBusy, setPsnBusy] = useState(false)
-  const [steamApiKey, setSteamApiKey] = useState('')
   const [steamId, setSteamId] = useState('')
   const [steamMsg, setSteamMsg] = useState('')
   const [steamBusy, setSteamBusy] = useState(false)
@@ -106,7 +105,6 @@ export default function SettingsModal({ onClose, username }: Props) {
         save_covers_locally: saveCoversLocally,
         public_profile: publicProfile,
         ...(tmdbApiKey && { tmdb_api_key: tmdbApiKey }),
-        ...(steamApiKey && { steam_api_key: steamApiKey }),
         steam_id: steamId,
         ...(xboxKey && { xbox_xbl_key: xboxKey }),
         xbox_gamertag: xboxGamertag,
@@ -406,33 +404,23 @@ export default function SettingsModal({ onClose, username }: Props) {
               <div className="sync-section">
                 <h3>🎮 Steam import</h3>
                 <div className="form-group">
-                  <label>Steam API Key</label>
-                  <input
-                    type="password"
-                    value={steamApiKey}
-                    onChange={e => setSteamApiKey(e.target.value)}
-                    placeholder={s.steam_api_key_set ? '••••••••• (saved)' : 'from store.steampowered.com/dev/apikey'}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Steam ID or username</label>
+                  <label>Steam username or profile URL</label>
                   <input
                     value={steamId}
                     onChange={e => setSteamId(e.target.value)}
-                    placeholder="e.g. 76561198012345678 or your vanity name"
+                    placeholder="e.g. lilcipra or steamcommunity.com/id/lilcipra"
                   />
                 </div>
                 <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
-                  Get a free API key at <strong>store.steampowered.com/dev/apikey</strong>.
-                  Your Steam profile Game Details must be set to <strong>Public</strong>.
-                  Hit <strong>Save</strong> to store credentials, then import.
+                  No API key needed. Your Steam profile <strong>Game Details</strong> must be set to <strong>Public</strong> in Steam → Privacy Settings.
+                  Hit <strong>Save</strong> to store the username, then import.
                 </p>
                 <div className="sync-row">
                   {steamMsg && <span className={`sync-status${steamMsg.startsWith('✓') ? ' ok' : ''}`}>{steamMsg}</span>}
                   <button
                     className="btn-secondary"
                     onClick={handleSteamImport}
-                    disabled={steamBusy || !s.steam_api_key_set || !steamId.trim()}
+                    disabled={steamBusy || !steamId.trim()}
                   >
                     {steamBusy ? '⏳ Importing…' : 'Import Steam library'}
                   </button>

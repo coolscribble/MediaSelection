@@ -122,11 +122,9 @@ router.post('/psn', async (req, res) => {
 
 router.post('/steam', async (req, res) => {
   const { steamId } = req.body || {};
-  if (!steamId?.trim()) return res.status(400).json({ error: 'Steam ID or vanity URL is required' });
+  if (!steamId?.trim()) return res.status(400).json({ error: 'Steam profile URL or username is required' });
   try {
-    const keyRow = await db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [req.userId, 'steam_api_key']);
-    if (!keyRow?.value) return res.status(400).json({ error: 'Set your Steam API key in Settings first' });
-    res.json(await importSteamGames({ userId: req.userId, steamId, apiKey: keyRow.value }));
+    res.json(await importSteamGames({ userId: req.userId, steamId }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
