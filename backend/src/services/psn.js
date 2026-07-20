@@ -7,7 +7,7 @@ async function api() {
 }
 
 async function importPSNGames({ userId, npsso, skipCompleted = false, platforms = null }) {
-  const { exchangeNpssoForCode, exchangeCodeForAccessToken, getUserTitlesAndTrophyGroups } = await api();
+  const { exchangeNpssoForCode, exchangeCodeForAccessToken, getUserTitles } = await api();
 
   const code = await exchangeNpssoForCode(npsso);
   const auth = await exchangeCodeForAccessToken(code);
@@ -16,7 +16,7 @@ async function importPSNGames({ userId, npsso, skipCompleted = false, platforms 
   const limit = 800;
   let offset = 0;
   while (true) {
-    const res = await getUserTitlesAndTrophyGroups(auth, 'me', { limit, offset });
+    const res = await getUserTitles(auth, 'me', { limit, offset });
     const batch = res.trophyTitles ?? [];
     allTitles.push(...batch);
     if (allTitles.length >= (res.totalItemCount ?? allTitles.length)) break;
