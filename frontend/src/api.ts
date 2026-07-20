@@ -151,6 +151,13 @@ export const importCSV = async (category: string, file: File, platforms?: string
   return call(`/api/import/csv/${category}`, { method: 'POST', body: form })
 }
 
+export const importPSN = (npsso: string, skipCompleted: boolean, platforms: string[]) =>
+  call('/api/sync/psn', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ npsso, skipCompleted, platforms }),
+  })
+
 export const refreshCategoryCovers = (category: string) =>
   call(`/api/sync/covers/${category}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) })
 

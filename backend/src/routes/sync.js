@@ -8,6 +8,7 @@ const { syncIGDB } = require('../services/igdb');
 const { syncAOTY } = require('../services/aoty');
 const { syncComicVine } = require('../services/comicvine');
 const { syncGoogleBooks } = require('../services/googlebooks');
+const { importPSNGames } = require('../services/psn');
 
 router.get('/simkl/pin', async (req, res) => {
   try {
@@ -90,6 +91,27 @@ router.post('/covers/:category', async (req, res) => {
     else if (category === 'series' || category === 'movies') res.json(await syncSimkl(req.userId));
     else res.json({ updated: 0, skipped: 0 });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/psn', async (req, res) => {
+  const { npsso, skipCompleted, platforms } = req.body || {};
+  if (!npsso || typeof npsso !== 'string' || npsso.trim().length < 10) {
+    return res.status(400).json({ error: 'Invalid or missing NPSSO token' });
+  }
+  try {
+    res.json(await importPSNGames({
+      userId: req.userId,
+      npsso: npsso.trim(),
+      skipCompleted: Boolean(skipCompleted),
+      platforms: Array.isArray(platforms) && platforms.length > 0 ? platforms : null,
+    }));
+  } catch (e) {
+    const msg = e?.message || String(e);
+    if (msg.includes('npsso') || msg.includes('401') || msg.includes('Unauthorized')) {
+      return res.status(401).json({ error: 'Invalid NPSSO token — please get a fresh one from PSN' });
+    }
+    res.status(500).json({ error: msg });
+  }
 });
 
 router.post('/update-metadata', async (req, res) => {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getSettings, saveSettings, getSimklPin, pollSimklPin } from '../api'
+import { getSettings, saveSettings, getSimklPin, pollSimklPin, importPSN } from '../api'
 import {
   Settings, CATEGORIES, CATEGORY_LABELS, CATEGORY_ICONS,
   ANILIST_STATE_OPTIONS, SIMKL_STATE_OPTIONS,
@@ -40,6 +40,11 @@ export default function SettingsModal({ onClose, username }: Props) {
   const [polling, setPolling] = useState(false)
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
+  const [psnNpsso, setPsnNpsso] = useState('')
+  const [psnSkipCompleted, setPsnSkipCompleted] = useState(false)
+  const [psnPlatforms, setPsnPlatforms] = useState<string[]>(['PS4', 'PS5'])
+  const [psnMsg, setPsnMsg] = useState('')
+  const [psnBusy, setPsnBusy] = useState(false)
 
   useEffect(() => {
     getSettings().then((data: Settings) => {
@@ -92,6 +97,19 @@ export default function SettingsModal({ onClose, username }: Props) {
       setPin(data); setPolling(true); pollForToken(data.user_code)
     } catch (e: unknown) { setMsg(e instanceof Error ? e.message : 'Error') }
     finally { setBusy(false) }
+  }
+
+  const handlePsnImport = async () => {
+    if (!psnNpsso.trim()) { setPsnMsg('Paste your NPSSO token first'); return }
+    setPsnBusy(true); setPsnMsg('')
+    try {
+      const res = await importPSN(psnNpsso.trim(), psnSkipCompleted, psnPlatforms) as {
+        added: number; skipped: number; already: number; total: number
+      }
+      setPsnMsg(`✓ Added ${res.added} game${res.added !== 1 ? 's' : ''} — ${res.already} already in library, ${res.skipped} skipped`)
+      setPsnNpsso('')
+    } catch (e: unknown) { setPsnMsg(e instanceof Error ? e.message : 'Import failed') }
+    finally { setPsnBusy(false) }
   }
 
   const pollForToken = (userCode: string) => {
@@ -249,6 +267,62 @@ export default function SettingsModal({ onClose, username }: Props) {
                   Register a free app at <strong>dev.twitch.tv/console</strong> to get credentials.
                   Hit <strong>Save</strong> then <strong>⟳ Update</strong> to fetch covers and ratings for all games.
                 </p>
+              </div>
+
+              <div className="sync-section">
+                <h3>🎮 PlayStation Network (PSN) import</h3>
+                <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
+                  Imports your trophy-tracked games from PSN into the Games library. Requires a one-time NPSSO token
+                  from your PlayStation session — it is used immediately and never stored.
+                </p>
+                <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
+                  <strong>How to get your NPSSO:</strong> Log in at <code>playstation.com</code>,
+                  then open a new tab and go to&nbsp;
+                  <code>ca.account.sony.com/api/v1/ssocookie</code>.
+                  Copy the <code>npsso</code> value from the JSON response.
+                </p>
+                <div className="form-group">
+                  <label>NPSSO token</label>
+                  <input
+                    type="password"
+                    value={psnNpsso}
+                    onChange={e => setPsnNpsso(e.target.value)}
+                    placeholder="64-character token from PlayStation"
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 10 }}>
+                  <label style={{ fontSize: 13, fontWeight: 600, marginBottom: 2 }}>Platforms to include</label>
+                  {['PS5', 'PS4', 'PS3', 'PSVITA'].map(p => (
+                    <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={psnPlatforms.includes(p)}
+                        onChange={() => setPsnPlatforms(prev =>
+                          prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
+                        )}
+                      />
+                      {p}
+                    </label>
+                  ))}
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, marginBottom: 10 }}>
+                  <input
+                    type="checkbox"
+                    checked={psnSkipCompleted}
+                    onChange={e => setPsnSkipCompleted(e.target.checked)}
+                  />
+                  Skip games with 100% trophies (already completed)
+                </label>
+                <div className="sync-row">
+                  {psnMsg && <span className={`sync-status${psnMsg.startsWith('✓') ? ' ok' : ''}`}>{psnMsg}</span>}
+                  <button
+                    className="btn-secondary"
+                    onClick={handlePsnImport}
+                    disabled={psnBusy || !psnNpsso.trim() || psnPlatforms.length === 0}
+                  >
+                    {psnBusy ? '⏳ Importing…' : 'Import PSN library'}
+                  </button>
+                </div>
               </div>
 
               <div className="sync-section">
