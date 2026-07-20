@@ -67,13 +67,13 @@ export default function PublicProfilePage({ username }: Props) {
           const slots = data.slots[cat].filter(s => s.title)
           return (
             <section key={cat}>
-              <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 600, marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                 {CATEGORY_ICONS[cat as Category]} {CATEGORY_LABELS[cat as Category]}
                 <span style={{ fontSize: 12, color: 'var(--text2)', fontWeight: 400 }}>
                   ({data.library_counts[cat] ?? 0} in library)
                 </span>
               </h2>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', justifyContent: 'center' }}>
                 {slots.map(slot => (
                   <SlotCard key={slot.slot_index} slot={slot} category={cat as Category} />
                 ))}
