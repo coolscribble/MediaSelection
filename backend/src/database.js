@@ -120,7 +120,7 @@ async function migrateToMultiUser() {
 
 async function cleanExpiredSessions() {
   const now = Math.floor(Date.now() / 1000);
-  const r = await db.run('DELETE FROM sessions WHERE expires_at < ?', [now]);
+  const r = await db.run('DELETE FROM sessions WHERE expires_at IS NOT NULL AND expires_at < ?', [now]);
   if (r.changes > 0) console.log(`[db] Pruned ${r.changes} expired session(s)`);
 }
 
@@ -185,6 +185,10 @@ async function init() {
   try { await db.run('ALTER TABLE ongoing_items ADD COLUMN watched_progress INTEGER DEFAULT 0') } catch {}
 
   await migrateToMultiUser();
+
+  // Must run after migrateToMultiUser() since sessions table is created there
+  // Nullable column — libsql ALTER TABLE doesn't support NOT NULL + expression DEFAULT
+  try { await db.run('ALTER TABLE sessions ADD COLUMN expires_at INTEGER') } catch {}
 }
 
 module.exports = { db, init, ensureUserSlots, cleanExpiredSessions };
