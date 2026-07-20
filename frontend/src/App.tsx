@@ -8,6 +8,7 @@ import SyncModal from './components/SyncModal'
 import OngoingSection from './components/OngoingSection'
 import ToastContainer from './components/ToastContainer'
 import LoginPage from './components/LoginPage'
+import PublicProfilePage from './components/PublicProfilePage'
 
 const COVER_OPTIONS = [
   { key: 'games',  label: '🎮 Games (IGDB)',                   cat: 'games'  },
@@ -15,7 +16,12 @@ const COVER_OPTIONS = [
   { key: 'comics', label: '💬 Comics (Google Books/Open Library)',   cat: 'comics' },
 ]
 
+const publicProfileMatch = window.location.pathname.match(/^\/user\/([^/]+)\/?$/)
+
 export default function App() {
+  if (publicProfileMatch) {
+    return <PublicProfilePage username={publicProfileMatch[1]} />
+  }
   const [user, setUser] = useState<User | null>(null)
   const [authChecked, setAuthChecked] = useState(false)
   const [slots, setSlots] = useState<SlotsData | null>(null)
@@ -209,7 +215,7 @@ export default function App() {
         For any questions feel free to DM Cipra on Discord
       </footer>
 
-      {settingsOpen && <SettingsModal onClose={() => { setSettingsOpen(false); refresh() }} />}
+      {settingsOpen && <SettingsModal onClose={() => { setSettingsOpen(false); refresh() }} username={user.username} />}
       {syncOpen    && <SyncModal     onClose={() => { setSyncOpen(false);    refresh() }} />}
       <ToastContainer />
     </div>

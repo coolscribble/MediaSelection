@@ -101,6 +101,7 @@ export interface Settings {
   igdb_client_set: boolean
   comicvine_api_set: boolean
   save_covers_locally: boolean
+  public_profile: boolean
 }
 
 export const ANILIST_STATE_OPTIONS = [

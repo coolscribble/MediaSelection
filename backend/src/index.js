@@ -23,6 +23,7 @@ app.use(express.json());
 // Public routes — no auth required
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/covers', require('./routes/covers')); // <img src> can't send credentials
+app.use('/api/public', require('./routes/public'));
 
 // Protected routes — all require a valid session token
 const api = express.Router();

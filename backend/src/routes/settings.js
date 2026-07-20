@@ -31,6 +31,7 @@ router.get('/', async (req, res) => {
       igdb_client_set:      Boolean(map.igdb_client_secret),
       comicvine_api_set:    Boolean(map.comicvine_api_key),
       save_covers_locally:  map.save_covers_locally === 'true',
+      public_profile:       map.public_profile === 'true',
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -44,6 +45,9 @@ router.post('/', async (req, res) => {
                     'igdb_client_id', 'igdb_client_secret', 'comicvine_api_key'];
     if (req.body.save_covers_locally !== undefined) {
       await upsert('save_covers_locally', req.body.save_covers_locally ? 'true' : 'false');
+    }
+    if (req.body.public_profile !== undefined) {
+      await upsert('public_profile', req.body.public_profile ? 'true' : 'false');
     }
     for (const key of scalar) {
       if (req.body[key] !== undefined) await upsert(key, req.body[key]);

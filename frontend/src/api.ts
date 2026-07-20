@@ -14,6 +14,19 @@ async function call(url: string, opts?: RequestInit) {
   return res.json()
 }
 
+// --- Public profile (no auth) ---
+
+export const getPublicProfile = (username: string) =>
+  fetch(`/api/public/${encodeURIComponent(username)}`).then(async res => {
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+    return data as {
+      username: string
+      slots: Record<string, { slot_index: number; is_locked: number; note: string | null; current_progress: number; title: string | null; thumbnail_url: string | null; metadata: string }[]>
+      library_counts: Record<string, number>
+    }
+  })
+
 // --- Auth ---
 
 export const login = (serverUrl: string, username: string, password: string) =>

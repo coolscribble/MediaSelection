@@ -6,7 +6,7 @@ import {
   MAL_ANIME_STATE_OPTIONS, MAL_MANGA_STATE_OPTIONS,
 } from '../types'
 
-interface Props { onClose: () => void }
+interface Props { onClose: () => void; username: string }
 
 const DEFAULT_SETTINGS: Settings = {
   simkl_client_id: '', simkl_token_set: false,
@@ -19,14 +19,15 @@ const DEFAULT_SETTINGS: Settings = {
   save_covers_locally: false,
 }
 
-export default function SettingsModal({ onClose }: Props) {
-  const [tab, setTab] = useState<'connections' | 'states' | 'queue'>('connections')
+export default function SettingsModal({ onClose, username }: Props) {
+  const [tab, setTab] = useState<'connections' | 'states' | 'queue' | 'profile'>('connections')
   const [s, setS] = useState<Settings>(DEFAULT_SETTINGS)
   const [clientId, setClientId] = useState('')
   const [igdbClientId, setIgdbClientId] = useState('')
   const [igdbClientSecret, setIgdbClientSecret] = useState('')
   const [comicvineApiKey, setComicvineApiKey] = useState('')
   const [saveCoversLocally, setSaveCoversLocally] = useState(false)
+  const [publicProfile, setPublicProfile] = useState(false)
   const [aniUser, setAniUser] = useState('')
   const [malUser, setMalUser] = useState('')
   const [aniStates, setAniStates] = useState<string[]>(['PLANNING'])
@@ -52,6 +53,7 @@ export default function SettingsModal({ onClose }: Props) {
       setMalMangaStates(data.mal_manga_states ?? ['plantoread'])
       setQueueModes(data.queue_modes ?? {})
       setSaveCoversLocally(data.save_covers_locally ?? false)
+      setPublicProfile(data.public_profile ?? false)
     })
   }, [])
 
@@ -74,6 +76,7 @@ export default function SettingsModal({ onClose }: Props) {
         ...(igdbClientSecret && { igdb_client_secret: igdbClientSecret }),
         ...(comicvineApiKey && { comicvine_api_key: comicvineApiKey }),
         save_covers_locally: saveCoversLocally,
+        public_profile: publicProfile,
       })
       setMsg('Saved')
       setS(prev => ({ ...prev, queue_modes: queueModes as Settings['queue_modes'] }))
@@ -137,6 +140,7 @@ export default function SettingsModal({ onClose }: Props) {
             <button className={`tab${tab === 'connections' ? ' active' : ''}`} onClick={() => setTab('connections')}>Connections</button>
             <button className={`tab${tab === 'states' ? ' active' : ''}`} onClick={() => setTab('states')}>Sync States</button>
             <button className={`tab${tab === 'queue' ? ' active' : ''}`} onClick={() => setTab('queue')}>Queue Mode</button>
+            <button className={`tab${tab === 'profile' ? ' active' : ''}`} onClick={() => setTab('profile')}>Profile</button>
           </div>
 
           {tab === 'connections' && (
@@ -304,6 +308,47 @@ export default function SettingsModal({ onClose }: Props) {
                   <span>{CATEGORY_ICONS[cat]} {CATEGORY_LABELS[cat]}</span>
                 </label>
               ))}
+            </div>
+          )}
+
+          {tab === 'profile' && (
+            <div className="sync-section">
+              <h3>🌐 Public profile</h3>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={publicProfile}
+                  onChange={e => setPublicProfile(e.target.checked)}
+                />
+                Make my profile public
+              </label>
+              <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>
+                When enabled, anyone can view your current picks and library counts at the link below.
+                They cannot edit anything — it's read only.
+              </p>
+              {publicProfile && (() => {
+                const profileUrl = `${window.location.origin}/user/${username}`
+                return (
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 6 }}>Your public profile link:</div>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                      <code style={{ flex: 1, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, padding: '6px 10px', fontSize: 12, wordBreak: 'break-all' }}>
+                        {profileUrl}
+                      </code>
+                      <button
+                        className="btn-secondary"
+                        style={{ whiteSpace: 'nowrap' }}
+                        onClick={() => navigator.clipboard.writeText(profileUrl).then(() => setMsg('Link copied!'))}
+                      >
+                        Copy
+                      </button>
+                    </div>
+                  </div>
+                )
+              })()}
+              <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 12 }}>
+                Remember to hit <strong>Save</strong> to apply the change.
+              </p>
             </div>
           )}
 
