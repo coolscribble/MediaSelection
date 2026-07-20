@@ -121,10 +121,11 @@ router.post('/psn', async (req, res) => {
 });
 
 router.post('/steam', async (req, res) => {
-  const { steamId } = req.body || {};
-  if (!steamId?.trim()) return res.status(400).json({ error: 'Steam profile URL or username is required' });
+  const { steamId, sessionCookie } = req.body || {};
+  if (!steamId?.trim()) return res.status(400).json({ error: 'Steam username or profile URL is required' });
+  if (!sessionCookie?.trim()) return res.status(400).json({ error: 'Steam session cookie is required' });
   try {
-    res.json(await importSteamGames({ userId: req.userId, steamId }));
+    res.json(await importSteamGames({ userId: req.userId, steamId, sessionCookie }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

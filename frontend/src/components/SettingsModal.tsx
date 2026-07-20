@@ -50,6 +50,7 @@ export default function SettingsModal({ onClose, username }: Props) {
   const [psnMsg, setPsnMsg] = useState('')
   const [psnBusy, setPsnBusy] = useState(false)
   const [steamId, setSteamId] = useState('')
+  const [steamCookie, setSteamCookie] = useState('')
   const [steamMsg, setSteamMsg] = useState('')
   const [steamBusy, setSteamBusy] = useState(false)
   const [xboxKey, setXboxKey] = useState('')
@@ -138,11 +139,13 @@ export default function SettingsModal({ onClose, username }: Props) {
   }
 
   const handleSteamImport = async () => {
-    if (!steamId.trim()) { setSteamMsg('Enter your Steam ID or username first'); return }
+    if (!steamId.trim()) { setSteamMsg('Enter your Steam username first'); return }
+    if (!steamCookie.trim()) { setSteamMsg('Paste your steamLoginSecure cookie first'); return }
     setSteamBusy(true); setSteamMsg('')
     try {
-      const r = await importSteam(steamId.trim()) as { added: number; already: number; total: number }
+      const r = await importSteam(steamId.trim(), steamCookie.trim()) as { added: number; already: number; total: number }
       setSteamMsg(`✓ Added ${r.added} game${r.added !== 1 ? 's' : ''} — ${r.already} already in library (${r.total} total in Steam)`)
+      setSteamCookie('')
     } catch (e: unknown) { setSteamMsg(e instanceof Error ? e.message : 'Import failed') }
     finally { setSteamBusy(false) }
   }
@@ -403,6 +406,14 @@ export default function SettingsModal({ onClose, username }: Props) {
 
               <div className="sync-section">
                 <h3>🎮 Steam import</h3>
+                <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
+                  Steam requires a session token to read your library (same idea as PSN's NPSSO).
+                  The token is used once and never stored.
+                </p>
+                <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
+                  <strong>How to get your steamLoginSecure cookie:</strong> Log in at <code>steamcommunity.com</code>,
+                  open DevTools (F12) → Application → Cookies → <code>https://steamcommunity.com</code> → copy the value of <code>steamLoginSecure</code>.
+                </p>
                 <div className="form-group">
                   <label>Steam username or profile URL</label>
                   <input
@@ -411,16 +422,21 @@ export default function SettingsModal({ onClose, username }: Props) {
                     placeholder="e.g. lilcipra or steamcommunity.com/id/lilcipra"
                   />
                 </div>
-                <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
-                  No API key needed. Your Steam profile <strong>Game Details</strong> must be set to <strong>Public</strong> in Steam → Privacy Settings.
-                  Hit <strong>Save</strong> to store the username, then import.
-                </p>
+                <div className="form-group">
+                  <label>steamLoginSecure cookie</label>
+                  <input
+                    type="password"
+                    value={steamCookie}
+                    onChange={e => setSteamCookie(e.target.value)}
+                    placeholder="paste cookie value from browser DevTools"
+                  />
+                </div>
                 <div className="sync-row">
                   {steamMsg && <span className={`sync-status${steamMsg.startsWith('✓') ? ' ok' : ''}`}>{steamMsg}</span>}
                   <button
                     className="btn-secondary"
                     onClick={handleSteamImport}
-                    disabled={steamBusy || !steamId.trim()}
+                    disabled={steamBusy || !steamId.trim() || !steamCookie.trim()}
                   >
                     {steamBusy ? '⏳ Importing…' : 'Import Steam library'}
                   </button>

@@ -27,27 +27,31 @@ function parseGamesXml(xml) {
 
 function buildXmlUrl(input) {
   const s = input.trim().replace(/\/$/, '');
-  // Full profile URL already
   if (s.startsWith('https://steamcommunity.com/') || s.startsWith('http://steamcommunity.com/')) {
-    return `${s}/games/?tab=all&xml=1`;
+    return s.includes('/games') ? s : `${s}/games/?tab=all&xml=1`;
   }
-  // 64-bit Steam ID
   if (/^7656\d{13}$/.test(s)) {
     return `https://steamcommunity.com/profiles/${s}/games/?tab=all&xml=1`;
   }
-  // Vanity name
   return `https://steamcommunity.com/id/${encodeURIComponent(s)}/games/?tab=all&xml=1`;
 }
 
-async function importSteamGames({ userId, steamId }) {
+async function importSteamGames({ userId, steamId, sessionCookie }) {
   const url = buildXmlUrl(steamId);
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 20000);
   let text;
   try {
-    const r = await fetch(url, { signal: ctrl.signal, headers: { 'Accept': 'text/xml,application/xml' } });
-    if (!r.ok) throw new Error(`Steam returned HTTP ${r.status}. Make sure your profile is public.`);
+    const r = await fetch(url, {
+      signal: ctrl.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+        'Accept': 'text/xml,application/xml,*/*',
+        'Cookie': `steamLoginSecure=${sessionCookie.trim()}`,
+      },
+    });
+    if (!r.ok) throw new Error(`Steam returned HTTP ${r.status}`);
     text = await r.text();
   } catch (e) {
     if (e.name === 'AbortError') throw new Error('Steam request timed out. Try again.');
@@ -57,11 +61,14 @@ async function importSteamGames({ userId, steamId }) {
   }
 
   if (!text.includes('<gamesList>')) {
-    throw new Error('Steam profile not found or Game Details are set to Private. Set Game Details to Public in Steam → Privacy Settings.');
+    if (text.includes('<title>Sign In</title>') || text.includes('login')) {
+      throw new Error('Steam session token is invalid or expired. Get a fresh steamLoginSecure cookie and try again.');
+    }
+    throw new Error('Steam did not return game data. Check your username and try a fresh session token.');
   }
 
   const games = parseGamesXml(text);
-  if (!games.length) throw new Error('No games found. Set Game Details to Public in Steam → Privacy Settings.');
+  if (!games.length) throw new Error('No games found. Make sure Game Details is set to Public in Steam → Privacy Settings.');
 
   let added = 0, already = 0;
   for (const g of games) {
