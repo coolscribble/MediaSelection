@@ -11,49 +11,62 @@ MediaPicker is a self-hosted backlog manager and randomizer for people who can n
 ## Features
 
 ### 🔐 Authentication
-Sign in with your **Jellyfin** account (enter your server URL, username, and password) or click **Continue without Jellyfin** to use a persistent local account — no Jellyfin installation required. Each Jellyfin user gets their own separate library, queue, slots, and settings. The local option stores data under a shared `local` account.
+
+The login page has three options:
+
+| Option | Description |
+|---|---|
+| 🎬 **Jellyfin** | Sign in with an existing Jellyfin server. Each Jellyfin user gets their own library, queue, slots, and settings. |
+| 👤 **Local Account** | Register a username and password stored only on this server (bcrypt-hashed). Full per-user data isolation. |
+| Anonymous | **Continue without account** — data stored under a shared `local` account. |
+
+If `LOCAL_PASSCODE` is set in your environment, it acts as an **invite code** required for both local account registration and anonymous login — useful for keeping a public deployment controlled.
 
 ### 🎰 Slot randomizer
 Each category has three slots filled randomly from your library. Per slot you can:
 - **🔒 Lock** — keep the current item while rerolling the others
 - **🎲 Reroll** — swap it for something else from the library
-- **🔍 Pick manually** — search and assign a specific item from your library
-- **✓ Mark done** — sends the item to the finish counter and immediately draws the next one. The item and its cover file are deleted automatically.
-- **Progress tracking** — anime, manga, series, and comics slots have an episode/chapter counter you can increment or type into directly
+- **🔍 Pick manually** — search and assign a specific item
+- **✓ Mark done** — sends the item to the finish counter and draws the next one; the item and its local cover file are deleted automatically
+- **Progress tracking** — anime, manga, series, and comics slots have an episode/chapter counter
 - **Notes** — a text field per slot for reminders or thoughts
 
 ### 📚 Seven categories
 Movies · Series · Anime · Manga · Games · Comics · Albums — each with its own library, slots, queue, and finish counter.
 
 ### 📋 Queue mode
-Enable queue mode per category and the slots pull items in order from a hand-curated list instead of randomly. Build the queue manually or import it via CSV. Toggle per category in **Settings → Queue Mode**.
+Enable queue mode per category and slots pull items in order from a hand-curated list instead of randomly. Build the queue manually or import via CSV. Toggle per category in **Settings → Queue Mode**.
 
 ### 📺 Currently Releasing
-A live section showing everything you are actively following that is still airing. Syncs from AniList (anime/manga) and Simkl (TV shows). Only shows content that is actually still releasing — ended and cancelled shows are filtered out automatically on sync. Each tile shows:
-- Episodes/chapters aired (from the API, where available)
-- A **👁 watched** counter you can type into directly — no need to tap + repeatedly
+A live section showing everything you are actively following that is still airing. Syncs from AniList (anime/manga) and Simkl (TV shows). Ended and cancelled shows are filtered out automatically. Each tile shows episodes/chapters aired and a **👁 watched** counter you can type into directly.
 
 ### 🔢 Finish counter
-A stats bar always visible at the top shows how many items you have finished in each category, plus a running total of episodes watched and chapters read.
+A stats bar at the top shows how many items you have finished per category, plus a running total of episodes watched and chapters read.
+
+### 🌐 Public profile
+Any user can make their profile publicly viewable at `/user/username`. Enable it in **Settings → Profile** — a copyable link is shown. Visitors see your current randomized picks with cover art, progress, notes, and library counts. The page is fully read-only and private by default.
 
 ### 🖼️ Cover art
-| Category | Source | Needs API key |
+
+| Category | Source | API key needed |
 |---|---|---|
 | 🎮 Games | IGDB via Twitch | Yes — free at dev.twitch.tv |
 | 💬 Comics | ComicVine | Yes — free at comicvine.gamespot.com/api |
-| 🎵 Albums | MusicBrainz / Deezer / iTunes | No |
-| ⛩️ Anime / 📚 Manga | AniList (on sync) | No |
-| 🎬 Movies / 📺 Series | Simkl (on sync) | No |
+| 🎵 Albums | iTunes / Deezer / MusicBrainz | No |
+| ⛩️ Anime · 📚 Manga | AniList | No |
+| 📺 Series · 🎬 Movies | Simkl | No |
 
-Cover files are stored locally in your data folder and deleted automatically when the library item is removed.
+Click **🖼 Covers** in the header to refresh covers for any category. The dropdown lets you pick which categories to update. Cover files are stored locally in your data folder and deleted automatically when the library item is removed.
 
-ComicVine is rate-limited to 200 requests/hour on the free tier. The sync automatically pauses and resumes when the limit is reached, and skips items that already have a cover.
+ComicVine is rate-limited to 200 requests/hour on the free tier. The sync pauses and resumes automatically.
+
+If ComicVine matches a comic to the wrong volume, open the **💬 Comics** library, click **✏** on the item, and enter the correct ComicVine volume ID in the **ComicVine ID** field — found in the URL on comicvine.gamespot.com. Click **Set ID & Resync** to fetch the correct cover immediately.
 
 ### 🗑️ Clear library
-Each category header has a **🗑** button. First click turns it red showing **⚠ Sure?** — click again within three seconds to wipe the entire library for that category. Cover files for removed items are deleted from disk. Slots are cleared automatically.
+Each category header has a **🗑** button. First click turns red showing **⚠ Sure?** — click again within three seconds to wipe that category's library. Cover files are deleted from disk and slots are cleared.
 
 ### 🔔 Toast notifications
-Bottom-left notifications show what is happening (syncing, importing, fetching covers) and confirm when it finishes or fails.
+Bottom-left notifications confirm when syncs, imports, and cover fetches complete or fail.
 
 ---
 
@@ -65,8 +78,8 @@ Bottom-left notifications show what is happening (syncing, importing, fetching c
 | Backend | Node.js, Express |
 | Database | SQLite via libsql (`@libsql/client`) |
 | Container | Docker + Docker Compose |
-| Image registry | GitHub Container Registry (GHCR) |
-| Auth | Jellyfin (`/Users/AuthenticateByName`) or local account |
+| Auth | Jellyfin, local accounts (bcryptjs), anonymous |
+| Security | Helmet, express-rate-limit, httpOnly cookies, SSRF protection |
 
 ---
 
@@ -74,78 +87,83 @@ Bottom-left notifications show what is happening (syncing, importing, fetching c
 
 ### Prerequisites
 - Docker Desktop
-- A folder on your machine for persistent data (the database and cover images live here)
+- A folder on your machine for persistent data (database and cover images live here)
 
 ### docker-compose.yml
 
 ```yaml
 services:
   mediapicker:
-    image: ghcr.io/coolscribble/mediapicker:latest
+    build: .
     ports:
       - "3000:3000"
     volumes:
       - /your/data/path:/data
     restart: unless-stopped
+    environment:
+      - PORT=3000
+      - DATA_DIR=/data
+      - NODE_ENV=production
+      - ALLOWED_ORIGIN=https://yourdomain.com
+      - LOCAL_PASSCODE=change-me
 ```
 
-Replace `/your/data/path` with an absolute path to a folder on your machine, then:
+Replace `/your/data/path` with an absolute path to a folder on your machine.
+
+| Variable | Required | Description |
+|---|---|---|
+| `NODE_ENV=production` | Recommended | Enables `Secure` flag on session cookies (HTTPS only) |
+| `ALLOWED_ORIGIN` | Recommended | CORS origin restriction — set to your public domain |
+| `LOCAL_PASSCODE` | Optional | Invite code required for anonymous login and local account registration. Remove it to allow open registration on a LAN. |
 
 ```bash
-docker compose up -d
+docker compose up --build -d
 ```
 
 Open [http://localhost:3000](http://localhost:3000). You will be prompted to log in.
-
-### Building from source
-
-```bash
-git clone https://github.com/coolscribble/MediaSelection.git
-cd MediaSelection
-docker compose up --build -d
-```
 
 ---
 
 ## API integrations
 
 ### AniList (anime + manga)
-No API key required. Enter your AniList username in **Settings → Connections**. Syncs your current watching/reading list and fetches airing schedules.
+No API key required. Enter your AniList username in **Settings → Connections**. Syncs your watchlist and fetches airing schedules.
 
 ### Simkl (movies + series + anime)
 1. Create a free app at [simkl.com/apps](https://simkl.com/apps) to get a Client ID.
-2. Paste the Client ID in **Settings → Connections → Simkl**.
+2. Paste it in **Settings → Connections → Simkl**.
 3. Click **Authorize via PIN** and follow the on-screen steps.
 
 ### MyAnimeList (anime + manga)
-No API key required. Enter your MAL username in **Settings → Connections**. Profile must be set to public. Uses the Jikan public API.
+No API key required. Enter your MAL username in **Settings → Connections**. Profile must be public. Uses the Jikan API.
 
 ### IGDB (game covers)
 1. Register a free app at [dev.twitch.tv/console](https://dev.twitch.tv/console).
 2. Paste the **Client ID** and **Client Secret** in **Settings → Connections → IGDB**.
-3. Click **🖼 Covers → Games** in the header to fetch cover art for all games in your library.
+3. Click **🖼 Covers → 🎮 Games** in the header to fetch cover art.
 
 ### ComicVine (comic covers)
 1. Get a free API key at [comicvine.gamespot.com/api](https://comicvine.gamespot.com/api/).
 2. Paste it in **Settings → Connections → ComicVine**.
-3. Click **🖼 Covers → Comics** in the header.
-4. The free tier allows 200 requests/hour. The sync pauses automatically when the limit is close and resumes after the window resets. Items that already have a cover are skipped.
+3. In the Comics library click **🎨 ComicVine Sync**.
+4. Rate limit: 200 requests/hour. The sync pauses automatically and resumes after the window resets.
+5. If a comic matched the wrong volume, use the **✏ → ComicVine ID** field to correct it.
 
 ### iTunes / Deezer / MusicBrainz (album covers)
-No configuration needed. Click **🖼 Covers → Albums** and artwork is fetched automatically.
+No configuration needed. Click **🖼 Covers → 🎵 Albums**.
 
 ---
 
 ## CSV import
 
-CSV import is available per category in **Settings → Import**. Covers are preserved across re-imports — if a cached cover exists for an item, it is reused without re-downloading.
+CSV import is available per category via the **📥 Import CSV** button in the library modal.
 
 ### Games (InfiniteBacklog)
 ```
 IGDB ID,Game name,Game release date,...,Platform,Type,Status,Completion,...
 315367,"LEGO Harry Potter Collection",2024-10-08,...,PlayStation 5,,Playing,Unfinished,...
 ```
-Rows with `Completion = Completed` or `Beaten` are skipped unless the `Status` column says `Playing`. After picking the file a platform picker appears — uncheck platforms you don't want to import. You can also filter by acquisition type (Steam, PSN, Physical, etc.) if the CSV has that column.
+Rows with `Completion = Completed` or `Beaten` are skipped unless `Status = Playing`. A platform and acquisition-type picker appears before confirming the import.
 
 ### Comics (CLZ / ComicBase)
 ```
@@ -162,16 +180,16 @@ slowthai,UGLY,2023
 ```
 
 ### Everything else
-Any CSV with a `Title` or `Name` column. Optional: `thumbnail`, `Platform`, `Status`.
+Any CSV with a `Title` or `Name` column. Optional columns: `thumbnail`, `Platform`, `Status`.
 
 ---
 
 ## Known limitations
 
-- **⟳ Update** button in the header is a work in progress — it runs but results may be incomplete.
-- Simkl does not return per-episode counts from its API, only airing status. The watched counter in Currently Releasing works but won't show a `/total` denominator for Simkl-sourced shows.
-- ComicVine search matches on series title only. Generic names like "Batman" will match the most popular result, which may not be the exact volume you mean.
-- The `local` account is shared — if multiple people use the same instance without Jellyfin they will share the same data.
+- **⟳ Update** button is a work in progress — it runs but results may be incomplete.
+- Simkl does not return per-episode totals from its API, so the watched counter in Currently Releasing won't show a `/total` denominator for Simkl-sourced shows.
+- ComicVine matches on series title only — generic names like "Batman" may match the wrong volume. Use the **ComicVine ID** field to correct mismatches.
+- The `local` account is shared — multiple people using the instance without a personal account will see the same data.
 
 ---
 
