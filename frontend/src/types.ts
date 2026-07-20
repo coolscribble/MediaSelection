@@ -102,6 +102,12 @@ export interface Settings {
   comicvine_api_set: boolean
   save_covers_locally: boolean
   public_profile: boolean
+  tmdb_api_key_set: boolean
+  tmdb_session_set: boolean
+  steam_api_key_set: boolean
+  steam_id: string
+  xbox_key_set: boolean
+  xbox_gamertag: string
 }
 
 export const ANILIST_STATE_OPTIONS = [

@@ -9,6 +9,9 @@ const { syncAOTY } = require('../services/aoty');
 const { syncComicVine } = require('../services/comicvine');
 const { syncGoogleBooks } = require('../services/googlebooks');
 const { importPSNGames } = require('../services/psn');
+const { importSteamGames } = require('../services/steam');
+const { importXboxGames } = require('../services/xbox');
+const { getRequestToken, authorizeAndImport, reimport: tmdbReimport } = require('../services/tmdb');
 
 router.get('/simkl/pin', async (req, res) => {
   try {
@@ -112,6 +115,46 @@ router.post('/psn', async (req, res) => {
     }
     res.status(500).json({ error: msg });
   }
+});
+
+router.post('/steam', async (req, res) => {
+  const { steamId } = req.body || {};
+  if (!steamId?.trim()) return res.status(400).json({ error: 'Steam ID or vanity URL is required' });
+  try {
+    const keyRow = await db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [req.userId, 'steam_api_key']);
+    if (!keyRow?.value) return res.status(400).json({ error: 'Set your Steam API key in Settings first' });
+    res.json(await importSteamGames({ userId: req.userId, steamId, apiKey: keyRow.value }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/xbox', async (req, res) => {
+  const { gamertag } = req.body || {};
+  if (!gamertag?.trim()) return res.status(400).json({ error: 'Gamertag is required' });
+  try {
+    const keyRow = await db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [req.userId, 'xbox_xbl_key']);
+    if (!keyRow?.value) return res.status(400).json({ error: 'Set your xbl.io API key in Settings first' });
+    res.json(await importXboxGames({ userId: req.userId, gamertag, apiKey: keyRow.value }));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/tmdb/request-token', async (req, res) => {
+  try {
+    const keyRow = await db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [req.userId, 'tmdb_api_key']);
+    if (!keyRow?.value) return res.status(400).json({ error: 'Set your TMDB API key in Settings first' });
+    res.json(await getRequestToken(keyRow.value));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/tmdb/import', async (req, res) => {
+  const { requestToken } = req.body || {};
+  try {
+    const keyRow = await db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [req.userId, 'tmdb_api_key']);
+    if (!keyRow?.value) return res.status(400).json({ error: 'Set your TMDB API key in Settings first' });
+    const result = requestToken
+      ? await authorizeAndImport({ userId: req.userId, apiKey: keyRow.value, requestToken })
+      : await tmdbReimport({ userId: req.userId, apiKey: keyRow.value });
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.post('/update-metadata', async (req, res) => {

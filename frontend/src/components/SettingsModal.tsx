@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getSettings, saveSettings, getSimklPin, pollSimklPin, importPSN } from '../api'
+import { getSettings, saveSettings, getSimklPin, pollSimklPin, importPSN, importSteam, importXbox, getTmdbRequestToken, importTmdb } from '../api'
 import {
   Settings, CATEGORIES, CATEGORY_LABELS, CATEGORY_ICONS,
   ANILIST_STATE_OPTIONS, SIMKL_STATE_OPTIONS,
@@ -18,6 +18,9 @@ const DEFAULT_SETTINGS: Settings = {
   comicvine_api_set: false,
   save_covers_locally: false,
   public_profile: false,
+  tmdb_api_key_set: false, tmdb_session_set: false,
+  steam_api_key_set: false, steam_id: '',
+  xbox_key_set: false, xbox_gamertag: '',
 }
 
 export default function SettingsModal({ onClose, username }: Props) {
@@ -45,6 +48,19 @@ export default function SettingsModal({ onClose, username }: Props) {
   const [psnPlatforms, setPsnPlatforms] = useState<string[]>(['PS4', 'PS5'])
   const [psnMsg, setPsnMsg] = useState('')
   const [psnBusy, setPsnBusy] = useState(false)
+  const [steamApiKey, setSteamApiKey] = useState('')
+  const [steamId, setSteamId] = useState('')
+  const [steamMsg, setSteamMsg] = useState('')
+  const [steamBusy, setSteamBusy] = useState(false)
+  const [xboxKey, setXboxKey] = useState('')
+  const [xboxGamertag, setXboxGamertag] = useState('')
+  const [xboxMsg, setXboxMsg] = useState('')
+  const [xboxBusy, setXboxBusy] = useState(false)
+  const [tmdbApiKey, setTmdbApiKey] = useState('')
+  const [tmdbApproveUrl, setTmdbApproveUrl] = useState('')
+  const [tmdbRequestToken, setTmdbRequestToken] = useState('')
+  const [tmdbMsg, setTmdbMsg] = useState('')
+  const [tmdbBusy, setTmdbBusy] = useState(false)
 
   useEffect(() => {
     getSettings().then((data: Settings) => {
@@ -60,6 +76,8 @@ export default function SettingsModal({ onClose, username }: Props) {
       setQueueModes(data.queue_modes ?? {})
       setSaveCoversLocally(data.save_covers_locally ?? false)
       setPublicProfile(data.public_profile ?? false)
+      setSteamId(data.steam_id ?? '')
+      setXboxGamertag(data.xbox_gamertag ?? '')
     })
   }, [])
 
@@ -83,6 +101,11 @@ export default function SettingsModal({ onClose, username }: Props) {
         ...(comicvineApiKey && { comicvine_api_key: comicvineApiKey }),
         save_covers_locally: saveCoversLocally,
         public_profile: publicProfile,
+        ...(tmdbApiKey && { tmdb_api_key: tmdbApiKey }),
+        ...(steamApiKey && { steam_api_key: steamApiKey }),
+        steam_id: steamId,
+        ...(xboxKey && { xbox_xbl_key: xboxKey }),
+        xbox_gamertag: xboxGamertag,
       })
       setMsg('Saved')
       setS(prev => ({ ...prev, queue_modes: queueModes as Settings['queue_modes'] }))
@@ -110,6 +133,48 @@ export default function SettingsModal({ onClose, username }: Props) {
       setPsnNpsso('')
     } catch (e: unknown) { setPsnMsg(e instanceof Error ? e.message : 'Import failed') }
     finally { setPsnBusy(false) }
+  }
+
+  const handleSteamImport = async () => {
+    if (!steamId.trim()) { setSteamMsg('Enter your Steam ID or username first'); return }
+    setSteamBusy(true); setSteamMsg('')
+    try {
+      const r = await importSteam(steamId.trim()) as { added: number; already: number; total: number }
+      setSteamMsg(`✓ Added ${r.added} game${r.added !== 1 ? 's' : ''} — ${r.already} already in library (${r.total} total in Steam)`)
+    } catch (e: unknown) { setSteamMsg(e instanceof Error ? e.message : 'Import failed') }
+    finally { setSteamBusy(false) }
+  }
+
+  const handleXboxImport = async () => {
+    if (!xboxGamertag.trim()) { setXboxMsg('Enter your Gamertag first'); return }
+    setXboxBusy(true); setXboxMsg('')
+    try {
+      const r = await importXbox(xboxGamertag.trim()) as { added: number; already: number; total: number }
+      setXboxMsg(`✓ Added ${r.added} game${r.added !== 1 ? 's' : ''} — ${r.already} already in library`)
+    } catch (e: unknown) { setXboxMsg(e instanceof Error ? e.message : 'Import failed') }
+    finally { setXboxBusy(false) }
+  }
+
+  const handleTmdbGetLink = async () => {
+    setTmdbBusy(true); setTmdbMsg('')
+    try {
+      const r = await getTmdbRequestToken() as { requestToken: string; approveUrl: string }
+      setTmdbRequestToken(r.requestToken)
+      setTmdbApproveUrl(r.approveUrl)
+      setTmdbMsg('Visit the link below, approve, then click Import.')
+    } catch (e: unknown) { setTmdbMsg(e instanceof Error ? e.message : 'Error') }
+    finally { setTmdbBusy(false) }
+  }
+
+  const handleTmdbImport = async (useToken?: string) => {
+    setTmdbBusy(true); setTmdbMsg('')
+    try {
+      const r = await importTmdb(useToken) as { added: number; already: number; total: number }
+      setTmdbMsg(`✓ Added ${r.added} movie${r.added !== 1 ? 's' : ''} — ${r.already} already in library`)
+      setTmdbApproveUrl(''); setTmdbRequestToken('')
+      setS(prev => ({ ...prev, tmdb_session_set: true }))
+    } catch (e: unknown) { setTmdbMsg(e instanceof Error ? e.message : 'Import failed') }
+    finally { setTmdbBusy(false) }
   }
 
   const pollForToken = (userCode: string) => {
@@ -210,6 +275,71 @@ export default function SettingsModal({ onClose, username }: Props) {
               </div>
 
               <div className="sync-section">
+                <h3>🎬 Movies import</h3>
+                <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 8 }}>
+                  Import your movie watchlist from external trackers using the <strong>📥 Import CSV</strong> button in the Movies library.
+                </p>
+                <div style={{ fontSize: 12, color: 'var(--text2)', display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+                  <strong style={{ fontSize: 13 }}>Letterboxd</strong>
+                  Go to <code>letterboxd.com/[username]/data/export/</code> → download ZIP → import <code>watchlist.csv</code>.
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text2)', display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+                  <strong style={{ fontSize: 13 }}>Trakt</strong>
+                  Go to <code>trakt.tv/settings</code> → Export Data → import <code>watchlist-movies.csv</code> (or <code>watchlist-shows.csv</code> for the Series library).
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--text2)', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <strong style={{ fontSize: 13 }}>Serializd / iCheckMovies / Filmow</strong>
+                  Export a CSV from the site and import via the library button — any CSV with a Title or Name column works.
+                </div>
+              </div>
+
+              <div className="sync-section">
+                <h3>🎬 TMDB Watchlist</h3>
+                <div className="form-group">
+                  <label>API Key (v3)</label>
+                  <input
+                    type="password"
+                    value={tmdbApiKey}
+                    onChange={e => setTmdbApiKey(e.target.value)}
+                    placeholder={s.tmdb_api_key_set ? '••••••••• (saved)' : 'from themoviedb.org/settings/api'}
+                  />
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
+                  Get a free v3 API key at <strong>themoviedb.org/settings/api</strong>. Hit <strong>Save</strong> first, then authorize.
+                </p>
+                {tmdbApproveUrl && (
+                  <div className="pin-box">
+                    <div className="pin-hint">Open this link in your browser and approve:</div>
+                    <a href={tmdbApproveUrl} target="_blank" rel="noreferrer">{tmdbApproveUrl}</a>
+                    <div className="pin-hint">Then click Import below.</div>
+                  </div>
+                )}
+                <div className="sync-row">
+                  {tmdbMsg && <span className={`sync-status${tmdbMsg.startsWith('✓') ? ' ok' : ''}`}>{tmdbMsg}</span>}
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button className="btn-secondary" onClick={handleTmdbGetLink} disabled={tmdbBusy || !s.tmdb_api_key_set}>
+                      {tmdbBusy && !tmdbApproveUrl ? '⏳…' : 'Get auth link'}
+                    </button>
+                    {tmdbApproveUrl && (
+                      <button className="btn-secondary" onClick={() => handleTmdbImport(tmdbRequestToken)} disabled={tmdbBusy}>
+                        {tmdbBusy ? '⏳ Importing…' : 'Import after approving'}
+                      </button>
+                    )}
+                    {s.tmdb_session_set && !tmdbApproveUrl && (
+                      <button className="btn-secondary" onClick={() => handleTmdbImport()} disabled={tmdbBusy}>
+                        {tmdbBusy ? '⏳ Importing…' : 'Re-import watchlist'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="sync-row" style={{ marginTop: 4 }}>
+                  <span className={`sync-status${s.tmdb_session_set ? ' ok' : ''}`}>
+                    {s.tmdb_session_set ? '✓ Authorized' : '✗ Not authorized'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="sync-section">
                 <h3>💬 Comics cover art</h3>
                 <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 8 }}>
                   Uses the Google Books API — no API key needed.
@@ -266,6 +396,80 @@ export default function SettingsModal({ onClose, username }: Props) {
                 <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>
                   Register a free app at <strong>dev.twitch.tv/console</strong> to get credentials.
                   Hit <strong>Save</strong> then <strong>⟳ Update</strong> to fetch covers and ratings for all games.
+                </p>
+              </div>
+
+              <div className="sync-section">
+                <h3>🎮 Steam import</h3>
+                <div className="form-group">
+                  <label>Steam API Key</label>
+                  <input
+                    type="password"
+                    value={steamApiKey}
+                    onChange={e => setSteamApiKey(e.target.value)}
+                    placeholder={s.steam_api_key_set ? '••••••••• (saved)' : 'from store.steampowered.com/dev/apikey'}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Steam ID or username</label>
+                  <input
+                    value={steamId}
+                    onChange={e => setSteamId(e.target.value)}
+                    placeholder="e.g. 76561198012345678 or your vanity name"
+                  />
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
+                  Get a free API key at <strong>store.steampowered.com/dev/apikey</strong>.
+                  Your Steam profile Game Details must be set to <strong>Public</strong>.
+                  Hit <strong>Save</strong> to store credentials, then import.
+                </p>
+                <div className="sync-row">
+                  {steamMsg && <span className={`sync-status${steamMsg.startsWith('✓') ? ' ok' : ''}`}>{steamMsg}</span>}
+                  <button
+                    className="btn-secondary"
+                    onClick={handleSteamImport}
+                    disabled={steamBusy || !s.steam_api_key_set || !steamId.trim()}
+                  >
+                    {steamBusy ? '⏳ Importing…' : 'Import Steam library'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="sync-section">
+                <h3>🎮 Xbox import</h3>
+                <div className="form-group">
+                  <label>xbl.io API Key</label>
+                  <input
+                    type="password"
+                    value={xboxKey}
+                    onChange={e => setXboxKey(e.target.value)}
+                    placeholder={s.xbox_key_set ? '••••••••• (saved)' : 'free key from xbl.io'}
+                  />
+                </div>
+                <div className="form-group">
+                  <label>Gamertag</label>
+                  <input
+                    value={xboxGamertag}
+                    onChange={e => setXboxGamertag(e.target.value)}
+                    placeholder="your Xbox Gamertag"
+                  />
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
+                  Get a free API key at <strong>xbl.io</strong> (unofficial Xbox Live API — 500 req/day free tier).
+                  Hit <strong>Save</strong> first, then import.
+                </p>
+                <div className="sync-row">
+                  {xboxMsg && <span className={`sync-status${xboxMsg.startsWith('✓') ? ' ok' : ''}`}>{xboxMsg}</span>}
+                  <button
+                    className="btn-secondary"
+                    onClick={handleXboxImport}
+                    disabled={xboxBusy || !s.xbox_key_set || !xboxGamertag.trim()}
+                  >
+                    {xboxBusy ? '⏳ Importing…' : 'Import Xbox library'}
+                  </button>
+                </div>
+                <p style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>
+                  GOG and Nintendo Switch do not have public APIs — use the <strong>📥 Import CSV</strong> button in the Games library with a CSV export instead.
                 </p>
               </div>
 

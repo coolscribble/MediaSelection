@@ -32,6 +32,12 @@ router.get('/', async (req, res) => {
       comicvine_api_set:    Boolean(map.comicvine_api_key),
       save_covers_locally:  map.save_covers_locally === 'true',
       public_profile:       map.public_profile === 'true',
+      tmdb_api_key_set:     Boolean(map.tmdb_api_key),
+      tmdb_session_set:     Boolean(map.tmdb_session_id),
+      steam_api_key_set:    Boolean(map.steam_api_key),
+      steam_id:             map.steam_id  || '',
+      xbox_key_set:         Boolean(map.xbox_xbl_key),
+      xbox_gamertag:        map.xbox_gamertag || '',
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -42,7 +48,8 @@ router.post('/', async (req, res) => {
       db.run('INSERT OR REPLACE INTO settings (user_id, key, value) VALUES (?, ?, ?)', [req.userId, k, v]);
 
     const scalar = ['simkl_client_id', 'simkl_access_token', 'anilist_username', 'mal_username',
-                    'igdb_client_id', 'igdb_client_secret', 'comicvine_api_key'];
+                    'igdb_client_id', 'igdb_client_secret', 'comicvine_api_key',
+                    'tmdb_api_key', 'steam_api_key', 'steam_id', 'xbox_xbl_key', 'xbox_gamertag'];
     if (req.body.save_covers_locally !== undefined) {
       await upsert('save_covers_locally', req.body.save_covers_locally ? 'true' : 'false');
     }

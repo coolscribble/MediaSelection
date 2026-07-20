@@ -26,7 +26,9 @@ function extractTitle(r) {
 }
 
 function extractExternalId(r) {
-  return r['IGDB ID'] || r['igdb_id'] || r['AOTY ID'] || r['aoty_id'] || r['id'] || r['ID'] || r['external_id'] || null;
+  return r['IGDB ID'] || r['igdb_id'] || r['AOTY ID'] || r['aoty_id'] ||
+    r['TMDb ID'] || r['tmdb_id'] || r['Trakt ID'] || r['trakt_id'] ||
+    r['id'] || r['ID'] || r['external_id'] || null;
 }
 
 function extractThumbnail(r) {

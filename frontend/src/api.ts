@@ -151,6 +151,18 @@ export const importCSV = async (category: string, file: File, platforms?: string
   return call(`/api/import/csv/${category}`, { method: 'POST', body: form })
 }
 
+export const importSteam = (steamId: string) =>
+  call('/api/sync/steam', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ steamId }) })
+
+export const importXbox = (gamertag: string) =>
+  call('/api/sync/xbox', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gamertag }) })
+
+export const getTmdbRequestToken = () =>
+  call('/api/sync/tmdb/request-token', { method: 'POST' })
+
+export const importTmdb = (requestToken?: string) =>
+  call('/api/sync/tmdb/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(requestToken ? { requestToken } : {}) })
+
 export const importPSN = (npsso: string, skipCompleted: boolean, platforms: string[]) =>
   call('/api/sync/psn', {
     method: 'POST',
