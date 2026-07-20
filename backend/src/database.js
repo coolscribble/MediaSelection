@@ -189,6 +189,7 @@ async function init() {
   // Must run after migrateToMultiUser() since sessions table is created there
   // Nullable column — libsql ALTER TABLE doesn't support NOT NULL + expression DEFAULT
   try { await db.run('ALTER TABLE sessions ADD COLUMN expires_at INTEGER') } catch {}
+  try { await db.run('ALTER TABLE users ADD COLUMN password_hash TEXT') } catch {}
 }
 
 module.exports = { db, init, ensureUserSlots, cleanExpiredSessions };

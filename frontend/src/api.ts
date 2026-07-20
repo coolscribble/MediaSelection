@@ -41,6 +41,30 @@ export const login = (serverUrl: string, username: string, password: string) =>
     return data as { username: string }
   })
 
+export const registerAccount = (username: string, password: string, passcode?: string) =>
+  fetch('/api/auth/register', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password, ...(passcode ? { passcode } : {}) }),
+  }).then(async res => {
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+    return data as { username: string }
+  })
+
+export const loginAccount = (username: string, password: string) =>
+  fetch('/api/auth/login-account', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  }).then(async res => {
+    const data = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`)
+    return data as { username: string }
+  })
+
 export const loginLocal = (passcode?: string) =>
   fetch('/api/auth/local', {
     method: 'POST',

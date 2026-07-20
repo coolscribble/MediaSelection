@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const crypto = require('crypto');
+const bcrypt = require('bcryptjs');
 const rateLimit = require('express-rate-limit');
 const { db, ensureUserSlots } = require('../database');
 
@@ -17,6 +18,14 @@ const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
   message: { error: 'Too many login attempts, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  message: { error: 'Too many registration attempts, please try again later' },
   standardHeaders: true,
   legacyHeaders: false,
 });
@@ -120,6 +129,76 @@ router.post('/local', loginLimiter, async (req, res) => {
     res.json({ username: 'local' });
   } catch (e) {
     console.error('[auth/local]', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/register', registerLimiter, async (req, res) => {
+  const passcode = process.env.LOCAL_PASSCODE;
+  if (passcode && req.body?.passcode !== passcode) {
+    return res.status(401).json({ error: 'Invalid invite code' });
+  }
+
+  const { username, password } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
+  }
+  if (!/^[a-zA-Z0-9_-]{3,30}$/.test(username)) {
+    return res.status(400).json({ error: 'Username must be 3–30 characters (letters, numbers, _ -)' });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters' });
+  }
+
+  const reserved = ['local', 'admin', 'root', 'system'];
+  if (reserved.includes(username.toLowerCase())) {
+    return res.status(400).json({ error: 'That username is reserved' });
+  }
+
+  try {
+    const existing = await db.get('SELECT username FROM users WHERE username = ?', [username.toLowerCase()]);
+    if (existing) return res.status(409).json({ error: 'Username already taken' });
+
+    const hash = await bcrypt.hash(password, 12);
+    const userId = username.toLowerCase();
+    await db.run(
+      'INSERT INTO users (username, server_url, password_hash) VALUES (?, ?, ?)',
+      [userId, '', hash]
+    );
+    await ensureUserSlots(userId);
+
+    const token = await createSession(userId);
+    res.cookie('mp_session', token, COOKIE_OPTS);
+    res.status(201).json({ username: userId });
+  } catch (e) {
+    console.error('[auth/register]', e);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.post('/login-account', loginLimiter, async (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password are required' });
+  }
+
+  try {
+    const user = await db.get(
+      'SELECT username, password_hash FROM users WHERE username = ? AND password_hash IS NOT NULL',
+      [username.toLowerCase()]
+    );
+    // Use constant-time comparison regardless of whether user exists to prevent username enumeration
+    const hash = user?.password_hash || '$2a$12$invalidhashpaddingtomakeittaketime000000000000000000000';
+    const valid = await bcrypt.compare(password, hash);
+    if (!user || !valid) {
+      return res.status(401).json({ error: 'Invalid username or password' });
+    }
+
+    const token = await createSession(user.username);
+    res.cookie('mp_session', token, COOKIE_OPTS);
+    res.json({ username: user.username });
+  } catch (e) {
+    console.error('[auth/login-account]', e);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
