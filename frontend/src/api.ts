@@ -53,7 +53,11 @@ export const loginLocal = (passcode?: string) =>
     return data as { username: string }
   })
 
-export const getMe = () => call('/api/auth/me')
+export const getMe = () =>
+  fetch('/api/auth/me', { credentials: 'include' }).then(async res => {
+    if (!res.ok) throw new Error('Not authenticated')
+    return res.json()
+  })
 
 export const logout = () => call('/api/auth/logout', { method: 'POST' })
 
