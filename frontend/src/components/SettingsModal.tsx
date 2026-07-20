@@ -44,6 +44,7 @@ export default function SettingsModal({ onClose, username }: Props) {
   const [msg, setMsg] = useState('')
   const [busy, setBusy] = useState(false)
   const [settingsLoaded, setSettingsLoaded] = useState(false)
+  const [settingsLoadError, setSettingsLoadError] = useState(false)
   const [psnNpsso, setPsnNpsso] = useState('')
   const [psnSkipCompleted, setPsnSkipCompleted] = useState(false)
   const [psnPlatforms, setPsnPlatforms] = useState<string[]>(['PS4', 'PS5'])
@@ -80,9 +81,12 @@ export default function SettingsModal({ onClose, username }: Props) {
         setPublicProfile(data.public_profile ?? false)
         setSteamId(data.steam_id ?? '')
         setXboxGamertag(data.xbox_gamertag ?? '')
+        setSettingsLoaded(true)
       })
-      .catch(() => setMsg('Failed to load settings — check your connection'))
-      .finally(() => setSettingsLoaded(true))
+      .catch(() => {
+        setMsg('Failed to load settings — check your connection')
+        setSettingsLoadError(true)
+      })
   }, [])
 
   const toggleArr = (arr: string[], val: string) =>
@@ -643,8 +647,8 @@ export default function SettingsModal({ onClose, username }: Props) {
         </div>
         <div className="modal-footer">
           <button className="btn-ghost" onClick={onClose}>Close</button>
-          <button className="btn-primary" onClick={save} disabled={busy || !settingsLoaded}>
-            {settingsLoaded ? 'Save' : 'Loading…'}
+          <button className="btn-primary" onClick={save} disabled={busy || !settingsLoaded || settingsLoadError}>
+            {settingsLoadError ? 'Load failed — reopen to retry' : settingsLoaded ? 'Save' : 'Loading…'}
           </button>
         </div>
       </div>
