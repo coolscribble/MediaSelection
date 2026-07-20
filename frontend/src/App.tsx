@@ -11,9 +11,12 @@ import LoginPage from './components/LoginPage'
 import PublicProfilePage from './components/PublicProfilePage'
 
 const COVER_OPTIONS = [
-  { key: 'games',  label: '🎮 Games (IGDB)',                   cat: 'games'  },
-  { key: 'albums', label: '🎵 Albums (MusicBrainz/Deezer/iTunes)', cat: 'albums' },
-  { key: 'comics', label: '💬 Comics (Google Books/Open Library)',   cat: 'comics' },
+  { key: 'series', label: '📺 Series (Simkl)',                     cat: 'series' },
+  { key: 'anime',  label: '⛩️ Anime (AniList)',                    cat: 'anime'  },
+  { key: 'manga',  label: '📚 Manga (AniList)',                    cat: 'manga'  },
+  { key: 'games',  label: '🎮 Games (IGDB)',                       cat: 'games'  },
+  { key: 'albums', label: '🎵 Albums (iTunes)',                    cat: 'albums' },
+  { key: 'comics', label: '💬 Comics (Google Books)',              cat: 'comics' },
 ]
 
 const publicProfileMatch = window.location.pathname.match(/^\/user\/([^/]+)\/?$/)
@@ -33,7 +36,7 @@ export default function App() {
   const [syncOpen, setSyncOpen] = useState(false)
   const [updating, setUpdating] = useState(false)
   const [coversOpen, setCoversOpen] = useState(false)
-  const [coversSelected, setCoversSelected] = useState<Record<string, boolean>>({ games: true, albums: true, comics: true })
+  const [coversSelected, setCoversSelected] = useState<Record<string, boolean>>({ series: true, anime: true, manga: true, games: true, albums: true, comics: true })
   const [coversBusy, setCoversBusy] = useState(false)
   const coversRef = useRef<HTMLDivElement>(null)
 

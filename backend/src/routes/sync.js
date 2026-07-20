@@ -87,6 +87,7 @@ router.post('/covers/:category', async (req, res) => {
     else if (category === 'albums') res.json(await syncAOTY(opts));
     else if (category === 'comics') res.json(await syncGoogleBooks(opts));
     else if (category === 'anime' || category === 'manga') res.json(await syncAniList(req.userId));
+    else if (category === 'series' || category === 'movies') res.json(await syncSimkl(req.userId));
     else res.json({ updated: 0, skipped: 0 });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
