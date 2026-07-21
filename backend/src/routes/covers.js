@@ -12,7 +12,7 @@ router.get('/:category/:filename', (req, res) => {
   const filename = path.basename(req.params.filename);
   const filepath = path.join(COVERS_DIR, category, filename);
   if (!fs.existsSync(filepath)) return res.status(404).send('Not found');
-  res.sendFile(filepath);
+  res.sendFile(filepath, err => { if (err && !res.headersSent) res.status(404).send('Not found'); });
 });
 
 // Legacy flat files: /api/covers/{filename}
@@ -20,7 +20,7 @@ router.get('/:filename', (req, res) => {
   const filename = path.basename(req.params.filename);
   const filepath = path.join(COVERS_DIR, filename);
   if (!fs.existsSync(filepath)) return res.status(404).send('Not found');
-  res.sendFile(filepath);
+  res.sendFile(filepath, err => { if (err && !res.headersSent) res.status(404).send('Not found'); });
 });
 
 module.exports = router;
