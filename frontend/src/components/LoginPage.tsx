@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { login, loginAccount, registerAccount, loginLocal } from '../api'
+import { login, loginAccount, registerAccount } from '../api'
 import { User } from '../types'
 
 interface Props {
@@ -64,16 +64,6 @@ export default function LoginPage({ onLogin }: Props) {
       onLogin({ username: data.username, server_url: '' })
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Registration failed')
-    } finally { setBusy(false) }
-  }
-
-  const handleAnonymous = async () => {
-    setBusy(true); setError(null)
-    try {
-      const data = await loginLocal()
-      onLogin({ username: data.username, server_url: '' })
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Failed')
     } finally { setBusy(false) }
   }
 
@@ -211,21 +201,6 @@ export default function LoginPage({ onLogin }: Props) {
           </div>
         )}
 
-        {/* Anonymous divider + button */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <hr style={{ flex: 1, border: 'none', borderTop: '1px solid var(--border)' }} />
-          <span style={{ color: 'var(--text2)', fontSize: 12 }}>or</span>
-          <hr style={{ flex: 1, border: 'none', borderTop: '1px solid var(--border)' }} />
-        </div>
-        {error && mode !== 'jellyfin' && mode !== 'account' && (
-          <p style={{ margin: 0, color: 'var(--error, #e55)', fontSize: 13, textAlign: 'center' }}>{error}</p>
-        )}
-        <button type="button" className="btn-ghost" disabled={busy} style={{ width: '100%' }} onClick={handleAnonymous}>
-          Continue without account
-        </button>
-        <p style={{ margin: 0, textAlign: 'center', color: 'var(--text2)', fontSize: 11 }}>
-          Anonymous data is saved under a shared "local" account
-        </p>
       </div>
     </div>
   )
