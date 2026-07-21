@@ -104,7 +104,7 @@ function normalizeComicsTitle(t) {
 // are always imported regardless of the service filter (can't be categorised further).
 // "Retro Achievement" appears as a Digital service value in InfiniteBacklog exports —
 // it is a tracking system, not an acquisition store, so treat it as a pass-through.
-const GENERIC_DIGITAL = new Set(['digital', 'download', 'digital copy', 'downloadable', 'retro achievement', 'retro achievements', 'retroachievements']);
+const GENERIC_DIGITAL = new Set(['digital', 'download', 'digital copy', 'downloadable']);
 
 // Known service/format values to identify filterable columns in the CSV
 const SERVICE_VALUE_SET = new Set([
@@ -113,7 +113,7 @@ const SERVICE_VALUE_SET = new Set([
   'steam', 'gog', 'gog galaxy', 'epic', 'epic games', 'epic games store',
   'xbox', 'xbox game pass', 'game pass', 'gamepass', 'microsoft store',
   'nintendo', 'nintendo eshop', 'eshop',
-  'retro achievements', 'retroachievements',
+  'retro achievement', 'retro achievements', 'retroachievement', 'retroachievements',
   'ea app', 'ea', 'origin', 'ubisoft', 'ubisoft connect', 'uplay',
   'amazon', 'amazon games', 'prime gaming',
   'humble', 'humble bundle', 'itch.io',
@@ -143,7 +143,7 @@ function detectServiceColumns(records) {
 }
 
 // Column header names that indicate a Retro Achievements tracking column
-const RA_HEADERS = new Set(['retro achievements', 'retroachievements', 'ra', 'achievement service', 'retro']);
+const RA_HEADERS = new Set(['retro achievement', 'retro achievements', 'retroachievement', 'retroachievements', 'ra', 'achievement service', 'retro']);
 
 async function previewCSV(buffer, category) {
   const records = await parseCSV(buffer);
