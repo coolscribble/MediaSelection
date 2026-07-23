@@ -123,7 +123,7 @@ async function syncComicVine({ userId, itemId } = {}) {
 
     let result = null, confident = false, candidates = [];
 
-    if (comic.external_id && !itemId) {
+    if (comic.external_id) {
       result = await lookupById(comic.external_id, apiKey);
       confident = !!result;
     }
