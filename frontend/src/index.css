@@ -862,6 +862,22 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   font-style: italic;
 }
 
+/* --- Library tile view --- */
+.lib-tile:hover { border-color: var(--accent); }
+
+.lib-tile-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.lib-tile:hover .lib-tile-overlay { opacity: 1; }
+
 /* --- Covers popup --- */
 .covers-popup {
   position: absolute;

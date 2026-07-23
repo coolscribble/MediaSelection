@@ -9,6 +9,7 @@ import OngoingSection from './components/OngoingSection'
 import ToastContainer from './components/ToastContainer'
 import LoginPage from './components/LoginPage'
 import PublicProfilePage from './components/PublicProfilePage'
+import LibraryPage from './components/LibraryPage'
 
 const COVER_OPTIONS = [
   { key: 'series', label: '📺 Series (Simkl)',                     cat: 'series' },
@@ -35,6 +36,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [syncOpen, setSyncOpen] = useState(false)
   const [updating, setUpdating] = useState(false)
+  const [page, setPage] = useState<'home' | 'library'>('home')
   const [coversOpen, setCoversOpen] = useState(false)
   const [coversSelected, setCoversSelected] = useState<Record<string, boolean>>({ series: true, anime: true, manga: true, games: true, albums: true, comics: true })
   const [coversBusy, setCoversBusy] = useState(false)
@@ -130,11 +132,21 @@ export default function App() {
   if (!user) return <LoginPage onLogin={handleLogin} />
   if (loading) return <div className="loading">Loading…</div>
 
+  if (page === 'library') {
+    return (
+      <>
+        <LibraryPage onBack={() => setPage('home')} onRefresh={refresh} />
+        <ToastContainer />
+      </>
+    )
+  }
+
   return (
     <div>
       <header className="header">
         <h1>🎲 Media Picker</h1>
         <div className="header-actions">
+          <button className="btn-secondary" onClick={() => setPage('library')}>📋 Library</button>
           {/* Covers popup */}
           <div ref={coversRef} style={{ position: 'relative' }}>
             <button
