@@ -93,15 +93,7 @@ router.post('/covers/:category', async (req, res) => {
     if (category === 'games') res.json(await syncIGDB(opts));
     else if (category === 'albums') res.json(await syncAOTY(opts));
     else if (category === 'comics') {
-      let useCV = false;
-      if (opts.itemId) {
-        const row = await db.get(
-          "SELECT external_id FROM library_items WHERE id = ? AND user_id = ? AND category = 'comics'",
-          [opts.itemId, req.userId]
-        );
-        useCV = !!row?.external_id;
-      }
-      res.json(useCV ? await syncComicVine(opts) : await syncGoogleBooks(opts));
+      res.json(await syncComicVine(opts));
     }
     else if (category === 'anime' || category === 'manga') res.json(await syncAniList(req.userId));
     else if (category === 'series' || category === 'movies') res.json(await syncSimkl(req.userId));

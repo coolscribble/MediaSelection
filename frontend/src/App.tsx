@@ -18,7 +18,7 @@ const COVER_OPTIONS = [
   { key: 'manga',  label: '📚 Manga (AniList)',                    cat: 'manga'  },
   { key: 'games',  label: '🎮 Games (IGDB)',                       cat: 'games'  },
   { key: 'albums', label: '🎵 Albums (iTunes)',                    cat: 'albums' },
-  { key: 'comics', label: '💬 Comics (Google Books)',              cat: 'comics' },
+  { key: 'comics', label: '💬 Comics (ComicVine)',                  cat: 'comics' },
 ]
 
 const publicProfileMatch = window.location.pathname.match(/^\/user\/([^/]+)\/?$/)

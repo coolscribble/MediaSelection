@@ -166,11 +166,16 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
     setCoverBusy(true)
     try {
       await updateLibraryItemField(itemId, { external_id: cvId.trim(), clear_review: true })
-      await refreshItemCover(category, itemId)
+      const result = await refreshItemCover(category, itemId) as { updated?: number; skipped?: number }
       setEditingCoverId(null); setEditCvId('')
       load(); onRefresh()
+      if ((result.updated ?? 0) > 0) {
+        toast('Cover updated from ComicVine', 'success')
+      } else {
+        toast('ComicVine ID saved — no cover found for this volume', 'info')
+      }
     } catch (e: unknown) {
-      setMsg(e instanceof Error ? e.message : 'Error')
+      toast(e instanceof Error ? e.message : 'Error setting ComicVine ID', 'error')
     } finally { setCoverBusy(false) }
   }
 
@@ -277,7 +282,7 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
               📥 Import CSV
             </button>
             <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleCSVSelect} />
-            {hasCoverAPI && (
+            {hasCoverAPI && category !== 'comics' && (
               <button className="btn-secondary" onClick={handleRefreshAll} disabled={refreshingAll || busy}>
                 {refreshingAll ? '…' : '🖼 Refresh All Covers'}
               </button>
