@@ -5,11 +5,25 @@ const JIKAN = 'https://api.jikan.moe/v4';
 async function delay(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 async function fetchPage(url) {
-  await delay(400);
-  const res = await fetch(url);
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`Jikan API error ${res.status}: ${url}`);
-  return res.json();
+  await delay(600);
+  const MAX_RETRIES = 4;
+  let lastErr;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    if (attempt > 0) await delay(1500 * Math.pow(2, attempt - 1)); // 1.5s, 3s, 6s
+    const res = await fetch(url, { headers: { 'User-Agent': 'mediapicker/1.0' } });
+    if (res.status === 404) return null;
+    if (res.ok) return res.json();
+    // Parse Jikan's error body for a useful message
+    let jikanMsg = `status ${res.status}`;
+    try {
+      const body = await res.json();
+      if (body.message) jikanMsg = body.message;
+    } catch {}
+    lastErr = new Error(`Jikan: ${jikanMsg}`);
+    // Only retry on server-side errors
+    if (res.status < 500) throw lastErr;
+  }
+  throw lastErr;
 }
 
 async function importList(userId, username, listType, status, category) {
