@@ -34,11 +34,6 @@ async function getAllRecentlyPlayed(username, apiKey) {
   return games;
 }
 
-async function getCompletedGames(username, apiKey) {
-  const data = await raFetch('API_GetUserCompletedGames.php', { z: username, y: apiKey });
-  return Array.isArray(data) ? data : [];
-}
-
 async function getUserAwards(username, apiKey) {
   const data = await raFetch('API_GetUserAwards.php', { z: username, y: apiKey });
   const beatenIds = new Set();
@@ -67,15 +62,12 @@ async function syncRetroAchievements(userId) {
   const skipMastered = skipMasteredRow?.value === 'true';
   const skipBeaten = skipBeatenRow?.value === 'true';
 
-  const fetchList = [
-    getAllRecentlyPlayed(username, apiKey),
-    getCompletedGames(username, apiKey),
-  ];
+  const fetchList = [getAllRecentlyPlayed(username, apiKey)];
   if (skipBeaten || skipMastered) fetchList.push(getUserAwards(username, apiKey));
 
   const results = await Promise.all(fetchList);
-  const [recent, completed] = results;
-  const awards = results[2] || null;
+  const recent = results[0];
+  const awards = results[1] || null;
   const beatenIds = awards ? awards.beatenIds : new Set();
   const masteredIds = awards ? awards.masteredIds : new Set();
 
@@ -96,21 +88,6 @@ async function syncRetroAchievements(userId) {
       total,
       pct,
       hardcoreEarned: g.NumAchievedHardcore || 0,
-    });
-  }
-
-  for (const g of completed) {
-    if (!g.GameID || !g.Title || gamesMap.has(g.GameID)) continue;
-    const pct = Math.round(parseFloat(g.PctWon || '0') * 100);
-    gamesMap.set(g.GameID, {
-      id: g.GameID,
-      title: g.Title,
-      console: g.ConsoleName || '',
-      icon: g.ImageIcon,
-      earned: g.NumAwarded || 0,
-      total: g.MaxPossible || 0,
-      pct,
-      hardcoreEarned: g.HardcoreMode === '1' ? (g.NumAwarded || 0) : 0,
     });
   }
 
