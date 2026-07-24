@@ -77,7 +77,8 @@ async function syncSimkl(userId) {
         const extId = item.ids?.simkl ? String(item.ids.simkl) : null;
         const thumb = item.poster ? `https://simkl.in/posters/${item.poster}_m.webp` : null;
         const total = entry.total_episodes_count ?? item.total_episodes ?? item.episode_count ?? null;
-        const metadata = JSON.stringify({ year: item.year, status, total });
+        const tmdbId = item.ids?.tmdb ? Number(item.ids.tmdb) : null;
+        const metadata = JSON.stringify({ year: item.year, status, total, ...(tmdbId ? { tmdb_id: tmdbId } : {}) });
 
         if (extId) {
           const existing = await db.get(

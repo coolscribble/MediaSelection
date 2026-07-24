@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getCollections, createCollection, deleteCollection, addCollectionItem, removeCollectionItem, autoDetectCollections, getLibrary } from '../api'
+import { getCollections, createCollection, deleteCollection, addCollectionItem, removeCollectionItem, autoDetectCollections, autoDetectAnimeCollections, getLibrary } from '../api'
 import { toast } from '../notifications'
 
 const CATEGORIES = ['movies', 'series', 'anime', 'manga', 'games', 'comics', 'albums']
@@ -51,6 +51,7 @@ export default function CollectionsPage({ onBack, onRefresh }: Props) {
   const [libraryItems, setLibraryItems] = useState<{ id: number; title: string; thumbnail_url: string | null }[]>([])
   const [itemSearch, setItemSearch] = useState('')
   const [detecting, setDetecting] = useState(false)
+  const [detectingAnime, setDetectingAnime] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -142,6 +143,18 @@ export default function CollectionsPage({ onBack, onRefresh }: Props) {
     } finally { setDetecting(false) }
   }
 
+  const handleAutoDetectAnime = async () => {
+    setDetectingAnime(true)
+    try {
+      const r = await autoDetectAnimeCollections() as { created: number; checked: number; components: number }
+      await load()
+      onRefresh()
+      toast(`Anime auto-detect: ${r.created} new collection(s) from ${r.checked} anime (${r.components} franchise groups found)`, 'success')
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : 'Anime auto-detect failed', 'error')
+    } finally { setDetectingAnime(false) }
+  }
+
   const displayed = catFilter === 'all' ? collections : collections.filter(c => c.category === catFilter)
 
   function completionOf(col: Collection) {
@@ -163,7 +176,10 @@ export default function CollectionsPage({ onBack, onRefresh }: Props) {
         <button className="btn-ghost" onClick={onBack}>← Back</button>
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>🗂 Collections</h2>
         <div style={{ flex: 1 }} />
-        <button className="btn-ghost" onClick={handleAutoDetect} disabled={detecting} title="Detect movie collections from TMDB data">
+        <button className="btn-ghost" onClick={handleAutoDetectAnime} disabled={detectingAnime} title="Group anime seasons/sequels via AniList relations">
+          {detectingAnime ? '…' : '⛩ Auto-detect Anime'}
+        </button>
+        <button className="btn-ghost" onClick={handleAutoDetect} disabled={detecting} title="Detect movie franchises via TMDB">
           {detecting ? '…' : '🎬 Auto-detect Movies'}
         </button>
         <button className="btn-primary" onClick={() => setCreating(true)}>+ New Collection</button>

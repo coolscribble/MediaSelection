@@ -161,4 +161,104 @@ router.post('/auto-detect', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Auto-detect anime collections from AniList relations graph
+router.post('/auto-detect-anime', async (req, res) => {
+  try {
+    const animeItems = await db.all(
+      "SELECT id, title, external_id, thumbnail_url FROM library_items WHERE user_id = ? AND category = 'anime' AND external_id IS NOT NULL",
+      [req.userId]
+    );
+    if (!animeItems.length) return res.json({ created: 0, checked: 0, message: 'No anime with AniList IDs' });
+
+    // Map anilistId → library item (skip non-numeric ids)
+    const idMap = new Map();
+    for (const item of animeItems) {
+      const n = parseInt(item.external_id, 10);
+      if (!isNaN(n) && n > 0) idMap.set(n, item);
+    }
+    const ids = [...idMap.keys()];
+
+    // Batch fetch AniList relations (10 per query to stay within complexity limits)
+    const BATCH = 10;
+    const adjacency = new Map(); // anilistId → Set<anilistId> (in library)
+
+    for (let i = 0; i < ids.length; i += BATCH) {
+      const batch = ids.slice(i, i + BATCH);
+      const query = `{\n${batch.map(id =>
+        `a${id}: Media(id: ${id}, type: ANIME) { id relations { edges { relationType(version: 2) node { id type } } } }`
+      ).join('\n')}\n}`;
+      try {
+        const resp = await fetch('https://graphql.anilist.co', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ query }),
+        });
+        const json = await resp.json();
+        for (const id of batch) {
+          const media = json?.data?.[`a${id}`];
+          if (!media) continue;
+          const related = new Set();
+          for (const edge of (media.relations?.edges || [])) {
+            if (!['SEQUEL', 'PREQUEL', 'PARENT', 'SIDE_STORY'].includes(edge.relationType)) continue;
+            if (edge.node?.type !== 'ANIME') continue;
+            if (idMap.has(edge.node.id)) related.add(edge.node.id);
+          }
+          if (related.size > 0) adjacency.set(id, related);
+        }
+      } catch { /* skip batch on network error */ }
+      if (i + BATCH < ids.length) await new Promise(r => setTimeout(r, 800));
+    }
+
+    // BFS to find connected components
+    const visited = new Set();
+    const components = [];
+    for (const id of ids) {
+      if (visited.has(id)) continue;
+      const component = [];
+      const queue = [id];
+      while (queue.length) {
+        const curr = queue.shift();
+        if (visited.has(curr)) continue;
+        visited.add(curr);
+        component.push(curr);
+        for (const neighbor of (adjacency.get(curr) || [])) {
+          if (!visited.has(neighbor)) queue.push(neighbor);
+        }
+      }
+      if (component.length >= 2) components.push(component);
+    }
+
+    let created = 0;
+    for (const component of components) {
+      const items = component.map(id => idMap.get(id)).filter(Boolean);
+      // Skip if any item in this group is already in an anime collection
+      const placeholders = items.map(() => '?').join(',');
+      const alreadyIn = await db.get(
+        `SELECT ci.id FROM collection_items ci JOIN collections c ON c.id = ci.collection_id WHERE c.user_id = ? AND c.category = 'anime' AND ci.library_item_id IN (${placeholders}) LIMIT 1`,
+        [req.userId, ...items.map(i => i.id)]
+      );
+      if (alreadyIn) continue;
+
+      // Use the item with the lowest AniList ID as the root (oldest/original)
+      const root = items.reduce((a, b) => (Number(a.external_id) < Number(b.external_id) ? a : b));
+      // Strip trailing season/part suffixes for the collection name
+      const name = root.title.replace(/\s+(Season\s+\d+|Part\s+\d+|\d+(st|nd|rd|th)\s+Season)\s*.*$/i, '').trim() || root.title;
+
+      const col = await db.run(
+        "INSERT INTO collections (user_id, name, category, cover_url) VALUES (?, ?, 'anime', ?)",
+        [req.userId, name, root.thumbnail_url]
+      );
+      for (const item of items) {
+        await db.run(
+          'INSERT INTO collection_items (collection_id, library_item_id, title, thumbnail_url) VALUES (?, ?, ?, ?)',
+          [col.lastInsertRowid, item.id, item.title, item.thumbnail_url]
+        );
+      }
+      created++;
+    }
+
+    res.json({ created, checked: ids.length, components: components.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 module.exports = router;

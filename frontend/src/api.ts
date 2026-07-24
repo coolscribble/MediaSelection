@@ -196,6 +196,8 @@ export const removeCollectionItem = (collectionId: number, itemId: number) =>
   call(`/api/collections/${collectionId}/items/${itemId}`, { method: 'DELETE' })
 export const autoDetectCollections = () =>
   call('/api/collections/auto-detect', { method: 'POST' })
+export const autoDetectAnimeCollections = () =>
+  call('/api/collections/auto-detect-anime', { method: 'POST' })
 
 // --- Ongoing ---
 
