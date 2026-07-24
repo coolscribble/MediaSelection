@@ -1,29 +1,43 @@
 import { useEffect, useRef } from 'react'
 import { toast } from '../notifications'
 
-// EXP awarded per completed item
+// EXP per completed item (flat bonus for finishing)
 const ITEM_EXP: Record<string, number> = {
   movies:  80,
   series:  60,
   anime:   60,
   manga:   40,
-  games:  120,
+  games:  120,   // fallback for games without HLTB data
   comics:  40,
   albums:  30,
 }
 
-// EXP per episode/chapter of progress tracked
+// EXP per episode/chapter tracked at completion (proportional to ~40 EXP/hour)
 const PROGRESS_EXP: Record<string, number> = {
-  series: 5,
-  anime:  5,
-  manga:  1,
-  comics: 1,
+  series: 30,   // ~45 min TV episodes
+  anime:  15,   // ~24 min anime episodes
+  manga:   1,
+  comics:  1,
 }
 
-function calcTotalExp(counts: Record<string, number>, progress: Record<string, number>): number {
+const GAME_EXP_PER_HOUR = 40  // matches ~40 EXP/hr across all media
+
+function calcTotalExp(
+  counts: Record<string, number>,
+  progress: Record<string, number>,
+  gameHours = 0,
+  gamesWithHltb = 0,
+  collectionBonus = 0,
+): number {
   let exp = 0
-  for (const [cat, w] of Object.entries(ITEM_EXP))    exp += (counts[cat]   ?? 0) * w
+  for (const [cat, w] of Object.entries(ITEM_EXP)) {
+    if (cat === 'games') continue
+    exp += (counts[cat] ?? 0) * w
+  }
+  exp += Math.round(gameHours * GAME_EXP_PER_HOUR)
+  exp += ((counts.games ?? 0) - gamesWithHltb) * ITEM_EXP.games
   for (const [cat, w] of Object.entries(PROGRESS_EXP)) exp += (progress[cat] ?? 0) * w
+  exp += collectionBonus
   return exp
 }
 
@@ -43,12 +57,15 @@ function levelInfo(totalExp: number) {
 }
 
 interface Props {
-  statCounts:   Record<string, number>
-  statProgress: Record<string, number>
+  statCounts:       Record<string, number>
+  statProgress:     Record<string, number>
+  gameHours?:       number
+  gamesWithHltb?:   number
+  collectionBonus?: number
 }
 
-export default function XPBar({ statCounts, statProgress }: Props) {
-  const totalExp = calcTotalExp(statCounts, statProgress)
+export default function XPBar({ statCounts, statProgress, gameHours = 0, gamesWithHltb = 0, collectionBonus = 0 }: Props) {
+  const totalExp = calcTotalExp(statCounts, statProgress, gameHours, gamesWithHltb, collectionBonus)
   const { level, current, needed, ratio } = levelInfo(totalExp)
   const prevLevel = useRef<number | null>(null)
 

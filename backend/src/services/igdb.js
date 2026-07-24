@@ -1,5 +1,6 @@
 const { db } = require('../database');
 const { cacheImage } = require('./imageCache');
+const { lookupHLTB } = require('./hltb');
 
 // Per-user token cache keyed by userId
 const tokenCache = new Map();
@@ -113,6 +114,13 @@ async function syncIGDB({ userId, itemId } = {}) {
       ...(result.platforms?.length && { platforms: result.platforms.map(p => p.name) }),
     };
     const merged = { ...existingMeta, ...igdbMeta };
+
+    // Fetch HLTB time-to-beat if not already cached
+    if (!merged.hltb_hours) {
+      const hours = await lookupHLTB(game.title);
+      if (hours !== null) merged.hltb_hours = hours;
+      await new Promise(r => setTimeout(r, 400));
+    }
 
     if (thumb) {
       const localThumb = await cacheImage('games', `igdb_${result.id}`, thumb, userId);

@@ -182,6 +182,21 @@ export const previewCSVImport = async (category: string, file: File) => {
   return call(`/api/import/preview/${category}`, { method: 'POST', body: form })
 }
 
+// --- Collections ---
+
+export const getCollections = () => call('/api/collections')
+export const createCollection = (name: string, category: string) =>
+  call('/api/collections', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, category }) })
+export const deleteCollection = (id: number) => call(`/api/collections/${id}`, { method: 'DELETE' })
+export const updateCollection = (id: number, fields: { name?: string; cover_url?: string | null }) =>
+  call(`/api/collections/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields) })
+export const addCollectionItem = (collectionId: number, library_item_id: number) =>
+  call(`/api/collections/${collectionId}/items`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ library_item_id }) })
+export const removeCollectionItem = (collectionId: number, itemId: number) =>
+  call(`/api/collections/${collectionId}/items/${itemId}`, { method: 'DELETE' })
+export const autoDetectCollections = () =>
+  call('/api/collections/auto-detect', { method: 'POST' })
+
 // --- Ongoing ---
 
 export const updateOngoingProgress = (id: number, watched_progress: number) =>

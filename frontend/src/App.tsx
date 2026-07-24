@@ -11,6 +11,7 @@ import XPBar from './components/XPBar'
 import LoginPage from './components/LoginPage'
 import PublicProfilePage from './components/PublicProfilePage'
 import LibraryPage from './components/LibraryPage'
+import CollectionsPage from './components/CollectionsPage'
 
 const COVER_OPTIONS = [
   { key: 'series', label: '📺 Series (Simkl)',                     cat: 'series' },
@@ -33,11 +34,14 @@ export default function App() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [statCounts, setStatCounts] = useState<Record<string, number>>({})
   const [statProgress, setStatProgress] = useState<Record<string, number>>({})
+  const [statGameHours, setStatGameHours] = useState(0)
+  const [statGamesWithHltb, setStatGamesWithHltb] = useState(0)
+  const [statCollectionBonus, setStatCollectionBonus] = useState(0)
   const [loading, setLoading] = useState(true)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [syncOpen, setSyncOpen] = useState(false)
   const [updating, setUpdating] = useState(false)
-  const [page, setPage] = useState<'home' | 'library'>('home')
+  const [page, setPage] = useState<'home' | 'library' | 'collections'>('home')
   const [coversOpen, setCoversOpen] = useState(false)
   const [coversSelected, setCoversSelected] = useState<Record<string, boolean>>({ series: true, anime: true, manga: true, games: true, albums: true, comics: true })
   const [coversBusy, setCoversBusy] = useState(false)
@@ -63,11 +67,14 @@ export default function App() {
   const refresh = useCallback(async () => {
     try {
       const [s, cfg, st] = await Promise.all([getSlots(), getSettings(), getStats()])
-      const stTyped = st as { counts: Record<string, number>; progress: Record<string, number> }
+      const stTyped = st as { counts: Record<string, number>; progress: Record<string, number>; gameHours?: number; gamesWithHltb?: number; collectionBonus?: number }
       setSlots(s)
       setSettings(cfg)
       setStatCounts(stTyped.counts ?? {})
       setStatProgress(stTyped.progress ?? {})
+      setStatGameHours(stTyped.gameHours ?? 0)
+      setStatGamesWithHltb(stTyped.gamesWithHltb ?? 0)
+      setStatCollectionBonus(stTyped.collectionBonus ?? 0)
     } catch (e) { console.error(e) }
     finally { setLoading(false) }
   }, [])
@@ -136,8 +143,18 @@ export default function App() {
   if (page === 'library') {
     return (
       <>
-        <XPBar statCounts={statCounts} statProgress={statProgress} />
+        <XPBar statCounts={statCounts} statProgress={statProgress} gameHours={statGameHours} gamesWithHltb={statGamesWithHltb} collectionBonus={statCollectionBonus} />
         <LibraryPage onBack={() => setPage('home')} onRefresh={refresh} />
+        <ToastContainer />
+      </>
+    )
+  }
+
+  if (page === 'collections') {
+    return (
+      <>
+        <XPBar statCounts={statCounts} statProgress={statProgress} gameHours={statGameHours} gamesWithHltb={statGamesWithHltb} collectionBonus={statCollectionBonus} />
+        <CollectionsPage onBack={() => setPage('home')} onRefresh={refresh} />
         <ToastContainer />
       </>
     )
@@ -145,11 +162,12 @@ export default function App() {
 
   return (
     <div>
-      <XPBar statCounts={statCounts} statProgress={statProgress} />
+      <XPBar statCounts={statCounts} statProgress={statProgress} gameHours={statGameHours} gamesWithHltb={statGamesWithHltb} collectionBonus={statCollectionBonus} />
       <header className="header">
         <h1>🎲 Media Picker</h1>
         <div className="header-actions">
           <button className="btn-secondary" onClick={() => setPage('library')}>📋 Library</button>
+          <button className="btn-secondary" onClick={() => setPage('collections')}>🗂 Collections</button>
           {/* Covers popup */}
           <div ref={coversRef} style={{ position: 'relative' }}>
             <button

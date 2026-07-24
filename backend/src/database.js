@@ -190,6 +190,31 @@ async function init() {
   // Nullable column — libsql ALTER TABLE doesn't support NOT NULL + expression DEFAULT
   try { await db.run('ALTER TABLE sessions ADD COLUMN expires_at INTEGER') } catch {}
   try { await db.run('ALTER TABLE users ADD COLUMN password_hash TEXT') } catch {}
+
+  try { await db.run('ALTER TABLE completion_stats ADD COLUMN total_game_hours REAL DEFAULT 0') } catch {}
+  try { await db.run('ALTER TABLE completion_stats ADD COLUMN games_with_hltb INTEGER DEFAULT 0') } catch {}
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS collections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      category TEXT NOT NULL,
+      cover_url TEXT,
+      external_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE IF NOT EXISTS collection_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+      library_item_id INTEGER,
+      title TEXT NOT NULL,
+      thumbnail_url TEXT,
+      sort_order INTEGER DEFAULT 0,
+      completed_at DATETIME,
+      added_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
 }
 
 module.exports = { db, init, ensureUserSlots, cleanExpiredSessions };

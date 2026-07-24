@@ -969,6 +969,59 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 .lib-tile:hover .lib-tile-overlay { opacity: 1; }
 
+/* --- Collection cards --- */
+.collection-card {
+  width: 150px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  position: relative;
+  transition: border-color 0.15s, transform 0.1s;
+}
+.collection-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+.collection-card-cover {
+  width: 100%;
+  aspect-ratio: 2/3;
+  object-fit: cover;
+  display: block;
+  background: var(--bg);
+}
+.collection-card-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 40px;
+  aspect-ratio: 2/3;
+  background: var(--bg);
+}
+.collection-card-body { padding: 8px; }
+.collection-card-title {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collection-card-meta { color: var(--text2); font-size: 11px; margin-bottom: 3px; }
+.collection-card-progress { font-size: 11px; font-weight: 600; color: var(--text2); }
+.collection-card-progress.complete { color: #4caf50; }
+.collection-card-progress.partial { color: var(--accent); }
+.collection-card-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.collection-card:hover .collection-card-overlay { opacity: 1; }
+
 /* --- Covers popup --- */
 .covers-popup {
   position: absolute;

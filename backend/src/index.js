@@ -54,7 +54,8 @@ api.use('/import',   require('./routes/import'));
 api.use('/settings', require('./routes/settings'));
 api.use('/queue',    require('./routes/queue'));
 api.use('/ongoing',  require('./routes/ongoing'));
-api.use('/stats',    require('./routes/stats'));
+api.use('/stats',       require('./routes/stats'));
+api.use('/collections', require('./routes/collections'));
 app.use('/api', api);
 
 const STATIC_DIR = path.join(__dirname, '../public');

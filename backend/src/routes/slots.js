@@ -45,12 +45,20 @@ async function consumeNextQueueItem(userId, category) {
   return { libId: r.lastInsertRowid, title: item.title };
 }
 
-async function incrementStat(userId, category, progress) {
-  await db.run(
-    `INSERT INTO completion_stats (user_id, category, count, total_progress) VALUES (?, ?, 1, ?)
-     ON CONFLICT(user_id, category) DO UPDATE SET count = count + 1, total_progress = total_progress + ?`,
-    [userId, category, progress || 0, progress || 0]
-  );
+async function incrementStat(userId, category, progress, hltbHours = 0) {
+  if (category === 'games' && hltbHours > 0) {
+    await db.run(
+      `INSERT INTO completion_stats (user_id, category, count, total_progress, total_game_hours, games_with_hltb) VALUES (?, ?, 1, ?, ?, 1)
+       ON CONFLICT(user_id, category) DO UPDATE SET count = count + 1, total_progress = total_progress + ?, total_game_hours = total_game_hours + ?, games_with_hltb = games_with_hltb + 1`,
+      [userId, category, progress || 0, hltbHours, progress || 0, hltbHours]
+    );
+  } else {
+    await db.run(
+      `INSERT INTO completion_stats (user_id, category, count, total_progress) VALUES (?, ?, 1, ?)
+       ON CONFLICT(user_id, category) DO UPDATE SET count = count + 1, total_progress = total_progress + ?`,
+      [userId, category, progress || 0, progress || 0]
+    );
+  }
 }
 
 router.get('/', async (req, res) => {
@@ -93,11 +101,21 @@ router.post('/:id/complete', async (req, res) => {
     if (!slot) return res.status(404).json({ error: 'Slot not found' });
 
     const completedItemId = slot.item_id;
-    if (completedItemId) await incrementStat(req.userId, slot.category, slot.current_progress || 0);
 
     const completedItem = completedItemId
-      ? await db.get('SELECT thumbnail_url FROM library_items WHERE id = ?', [completedItemId])
+      ? await db.get('SELECT thumbnail_url, metadata FROM library_items WHERE id = ?', [completedItemId])
       : null;
+
+    if (completedItemId) {
+      const hltbHours = slot.category === 'games'
+        ? (JSON.parse(completedItem?.metadata || '{}').hltb_hours || 0)
+        : 0;
+      await incrementStat(req.userId, slot.category, slot.current_progress || 0, hltbHours);
+      await db.run(
+        'UPDATE collection_items SET completed_at = CURRENT_TIMESTAMP, library_item_id = NULL WHERE library_item_id = ?',
+        [completedItemId]
+      );
+    }
 
     await db.run(
       'UPDATE slots SET item_id = NULL, is_locked = 0, note = NULL, current_progress = 0 WHERE id = ?',
