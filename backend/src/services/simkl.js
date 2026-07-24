@@ -76,7 +76,7 @@ async function syncSimkl(userId) {
         if (!item) continue;
         const extId = item.ids?.simkl ? String(item.ids.simkl) : null;
         const thumb = item.poster ? `https://simkl.in/posters/${item.poster}_m.webp` : null;
-        const total = item.total_episodes != null ? item.total_episodes : (item.episode_count ?? null);
+        const total = entry.total_episodes_count ?? item.total_episodes ?? item.episode_count ?? null;
         const metadata = JSON.stringify({ year: item.year, status, total });
 
         if (extId) {
