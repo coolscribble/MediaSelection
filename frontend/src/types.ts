@@ -107,6 +107,9 @@ export interface Settings {
   steam_id: string
   xbox_key_set: boolean
   xbox_gamertag: string
+  ra_username: string
+  ra_api_key_set: boolean
+  ra_skip_mastered: boolean
 }
 
 export const ANILIST_STATE_OPTIONS = [

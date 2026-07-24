@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { getSettings, saveSettings, getSimklPin, pollSimklPin, importPSN, importSteam, importXbox, getTmdbRequestToken, importTmdb } from '../api'
+import { getSettings, saveSettings, getSimklPin, pollSimklPin, importPSN, importSteam, importXbox, importRetroAchievements, getTmdbRequestToken, importTmdb } from '../api'
 import {
   Settings, CATEGORIES, CATEGORY_LABELS, CATEGORY_ICONS,
   ANILIST_STATE_OPTIONS, SIMKL_STATE_OPTIONS,
@@ -21,6 +21,7 @@ const DEFAULT_SETTINGS: Settings = {
   tmdb_api_key_set: false, tmdb_session_set: false,
   steam_id: '',
   xbox_key_set: false, xbox_gamertag: '',
+  ra_username: '', ra_api_key_set: false, ra_skip_mastered: false,
 }
 
 export default function SettingsModal({ onClose, username }: Props) {
@@ -63,6 +64,11 @@ export default function SettingsModal({ onClose, username }: Props) {
   const [tmdbRequestToken, setTmdbRequestToken] = useState('')
   const [tmdbMsg, setTmdbMsg] = useState('')
   const [tmdbBusy, setTmdbBusy] = useState(false)
+  const [raUsername, setRaUsername] = useState('')
+  const [raApiKey, setRaApiKey] = useState('')
+  const [raSkipMastered, setRaSkipMastered] = useState(false)
+  const [raMsg, setRaMsg] = useState('')
+  const [raBusy, setRaBusy] = useState(false)
 
   useEffect(() => {
     getSettings()
@@ -81,6 +87,8 @@ export default function SettingsModal({ onClose, username }: Props) {
         setPublicProfile(data.public_profile ?? false)
         setSteamId(data.steam_id ?? '')
         setXboxGamertag(data.xbox_gamertag ?? '')
+        setRaUsername(data.ra_username ?? '')
+        setRaSkipMastered(data.ra_skip_mastered ?? false)
         setSettingsLoaded(true)
       })
       .catch(() => {
@@ -113,6 +121,9 @@ export default function SettingsModal({ onClose, username }: Props) {
         steam_id: steamId,
         ...(xboxKey && { xbox_xbl_key: xboxKey }),
         xbox_gamertag: xboxGamertag,
+        ra_username: raUsername,
+        ...(raApiKey && { ra_api_key: raApiKey }),
+        ra_skip_mastered: raSkipMastered,
       })
       setMsg('Saved')
       setS(prev => ({ ...prev, queue_modes: queueModes as Settings['queue_modes'] }))
@@ -162,6 +173,15 @@ export default function SettingsModal({ onClose, username }: Props) {
       setXboxMsg(`✓ Added ${r.added} game${r.added !== 1 ? 's' : ''} — ${r.already} already in library`)
     } catch (e: unknown) { setXboxMsg(e instanceof Error ? e.message : 'Import failed') }
     finally { setXboxBusy(false) }
+  }
+
+  const handleRaImport = async () => {
+    setRaBusy(true); setRaMsg('')
+    try {
+      const r = await importRetroAchievements() as { added: number; updated: number; skipped: number; total: number }
+      setRaMsg(`✓ ${r.added} new game${r.added !== 1 ? 's' : ''} added, ${r.updated} updated, ${r.skipped} skipped (${r.total} total in RA)`)
+    } catch (e: unknown) { setRaMsg(e instanceof Error ? e.message : 'Import failed') }
+    finally { setRaBusy(false) }
   }
 
   const handleTmdbGetLink = async () => {
@@ -537,6 +557,52 @@ export default function SettingsModal({ onClose, username }: Props) {
                     disabled={psnBusy || !psnNpsso.trim() || psnPlatforms.length === 0}
                   >
                     {psnBusy ? '⏳ Importing…' : 'Import PSN library'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="sync-section">
+                <h3>🏆 RetroAchievements import</h3>
+                <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
+                  Imports your retro game library with achievement progress. Games already in your library (by title) get RA achievement data merged in — new games are added separately.
+                </p>
+                <div className="form-group">
+                  <label>Username</label>
+                  <input
+                    value={raUsername}
+                    onChange={e => setRaUsername(e.target.value)}
+                    placeholder="your RetroAchievements username"
+                  />
+                </div>
+                <div className="form-group">
+                  <label>API Key</label>
+                  <input
+                    type="password"
+                    value={raApiKey}
+                    onChange={e => setRaApiKey(e.target.value)}
+                    placeholder={s.ra_api_key_set ? '••••••••• (saved)' : 'from retroachievements.org/settings'}
+                  />
+                </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, marginBottom: 10 }}>
+                  <input
+                    type="checkbox"
+                    checked={raSkipMastered}
+                    onChange={e => setRaSkipMastered(e.target.checked)}
+                  />
+                  Skip 100% mastered games (already fully completed)
+                </label>
+                <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
+                  Get your API key at <strong>retroachievements.org/settings</strong> → API Key section (free account required).
+                  Hit <strong>Save</strong> first, then import.
+                </p>
+                <div className="sync-row">
+                  {raMsg && <span className={`sync-status${raMsg.startsWith('✓') ? ' ok' : ''}`}>{raMsg}</span>}
+                  <button
+                    className="btn-secondary"
+                    onClick={handleRaImport}
+                    disabled={raBusy || !s.ra_api_key_set || !raUsername.trim()}
+                  >
+                    {raBusy ? '⏳ Importing…' : 'Import RetroAchievements library'}
                   </button>
                 </div>
               </div>

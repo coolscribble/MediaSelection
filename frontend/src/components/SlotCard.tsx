@@ -69,10 +69,16 @@ export default function SlotCard({ slot, queueMode, onRefresh }: Props) {
                 ? slot.metadata.platform
                 : Array.isArray(slot.metadata?.platforms)
                   ? (slot.metadata.platforms as string[]).slice(0, 1).join('')
-                  : ''
+                  : typeof slot.metadata?.console === 'string' && slot.metadata.console
+                    ? slot.metadata.console
+                    : ''
               const hltb = typeof slot.metadata?.hltb_hours === 'number' ? slot.metadata.hltb_hours : null
               const hltbStr = hltb !== null ? `~${hltb % 1 === 0 ? hltb : hltb.toFixed(1)}h` : ''
-              return [platform, hltbStr].filter(Boolean).join(' · ')
+              const raTotal = typeof slot.metadata?.ra_achievements_total === 'number' ? slot.metadata.ra_achievements_total : null
+              const raEarned = typeof slot.metadata?.ra_achievements_earned === 'number' ? slot.metadata.ra_achievements_earned : 0
+              const raPct = typeof slot.metadata?.ra_completion_pct === 'number' ? slot.metadata.ra_completion_pct : 0
+              const raStr = raTotal !== null && raTotal > 0 ? `🏆 ${raEarned}/${raTotal} (${raPct}%)` : ''
+              return [platform, hltbStr, raStr].filter(Boolean).join(' · ')
             })()}
           </span>
         )}

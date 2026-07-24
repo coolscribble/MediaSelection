@@ -12,6 +12,7 @@ const { importPSNGames } = require('../services/psn');
 const { importSteamGames } = require('../services/steam');
 const { importXboxGames } = require('../services/xbox');
 const { getRequestToken, authorizeAndImport, reimport: tmdbReimport } = require('../services/tmdb');
+const { syncRetroAchievements } = require('../services/retroachievements');
 
 router.get('/simkl/pin', async (req, res) => {
   try {
@@ -139,6 +140,11 @@ router.post('/xbox', async (req, res) => {
     if (!keyRow?.value) return res.status(400).json({ error: 'Set your xbl.io API key in Settings first' });
     res.json(await importXboxGames({ userId: req.userId, gamertag, apiKey: keyRow.value }));
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/retroachievements', async (req, res) => {
+  try { res.json(await syncRetroAchievements(req.userId)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 router.post('/tmdb/request-token', async (req, res) => {

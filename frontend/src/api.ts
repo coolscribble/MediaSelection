@@ -157,6 +157,9 @@ export const importSteam = (steamId: string, sessionCookie: string) =>
 export const importXbox = (gamertag: string) =>
   call('/api/sync/xbox', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gamertag }) })
 
+export const importRetroAchievements = () =>
+  call('/api/sync/retroachievements', { method: 'POST' })
+
 export const getTmdbRequestToken = () =>
   call('/api/sync/tmdb/request-token', { method: 'POST' })
 

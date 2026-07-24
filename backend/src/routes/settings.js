@@ -37,6 +37,9 @@ router.get('/', async (req, res) => {
       steam_id:             map.steam_id  || '',
       xbox_key_set:         Boolean(map.xbox_xbl_key),
       xbox_gamertag:        map.xbox_gamertag || '',
+      ra_username:          map.ra_username || '',
+      ra_api_key_set:       Boolean(map.ra_api_key),
+      ra_skip_mastered:     map.ra_skip_mastered === 'true',
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -48,12 +51,16 @@ router.post('/', async (req, res) => {
 
     const scalar = ['simkl_client_id', 'simkl_access_token', 'anilist_username', 'mal_username',
                     'igdb_client_id', 'igdb_client_secret', 'comicvine_api_key',
-                    'tmdb_api_key', 'steam_id', 'xbox_xbl_key', 'xbox_gamertag'];
+                    'tmdb_api_key', 'steam_id', 'xbox_xbl_key', 'xbox_gamertag',
+                    'ra_username', 'ra_api_key'];
     if (req.body.save_covers_locally !== undefined) {
       await upsert('save_covers_locally', req.body.save_covers_locally ? 'true' : 'false');
     }
     if (req.body.public_profile !== undefined) {
       await upsert('public_profile', req.body.public_profile ? 'true' : 'false');
+    }
+    if (req.body.ra_skip_mastered !== undefined) {
+      await upsert('ra_skip_mastered', req.body.ra_skip_mastered ? 'true' : 'false');
     }
     for (const key of scalar) {
       if (req.body[key] !== undefined) await upsert(key, req.body[key]);
