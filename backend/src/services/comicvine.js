@@ -96,7 +96,7 @@ async function searchVolume(title, apiKey) {
 }
 
 async function lookupById(cvId, apiKey) {
-  const url = `${BASE}/volume/4050-${cvId}/?api_key=${apiKey}&format=json&field_list=id,name,image,start_year`;
+  const url = `${BASE}/volume/4050-${cvId}/?api_key=${apiKey}&format=json&field_list=id,name,image,start_year,count_of_issues`;
   await waitForRateLimit();
   const r = await fetch(url, { headers: HEADERS });
   if (r.status === 401 || r.status === 403) throw new Error('ComicVine API key is invalid — please re-enter it in Settings');
@@ -135,7 +135,8 @@ async function syncComicVine({ userId, itemId } = {}) {
     const thumb = buildCoverUrl(result.image);
     const localThumb = thumb ? await cacheImage('comics', titleSlug(comic.title), thumb, userId) : thumb;
 
-    const merged = { ...meta, comicvine_id: result.id };
+    const issueCount = result.count_of_issues != null ? Number(result.count_of_issues) : null;
+    const merged = { ...meta, comicvine_id: result.id, ...(issueCount ? { total: issueCount } : {}) };
     if (!confident) {
       merged.cv_needs_review = true;
       merged.cv_candidates = candidates;

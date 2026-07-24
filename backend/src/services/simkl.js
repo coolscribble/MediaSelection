@@ -64,7 +64,7 @@ async function syncSimkl(userId) {
 
   for (const status of states) {
     for (const [type, category] of [['movies', 'movies'], ['shows', 'series'], ['anime', 'anime']]) {
-      const qs = simklQS(cid, dateFrom ? { date_from: dateFrom } : {});
+      const qs = simklQS(cid, { ...(dateFrom ? { date_from: dateFrom } : {}), extended: 'full' });
       const res = await fetch(`${BASE}/sync/all-items/${status}/${type}?${qs}`, { headers });
       if (res.status === 404) continue;
       if (!res.ok) throw new Error(`Simkl API error (${status}/${type}): ${res.status}`);
