@@ -84,7 +84,7 @@ export default function QueueModal({ category, label, onClose, onRefresh }: Prop
             </button>
             <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleCSV} />
             <button className="btn-ghost" onClick={handleClear} disabled={busy} style={{ color: 'var(--danger)' }}>
-              🗑 Clear all
+              ✕ Clear all
             </button>
             {msg && <span className={msg.startsWith('Error') || msg.startsWith('Import') ? 'error-msg' : 'success-msg'}>{msg}</span>}
           </div>

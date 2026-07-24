@@ -1128,8 +1128,16 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   /* ── Slots: 2-column so each slot is ~160px (enough room for buttons + text) ── */
   .slots { grid-template-columns: repeat(2, 1fr); }
 
-  /* Slightly more room in the action row */
-  .slot-actions { gap: 6px; padding: 8px 6px; }
+  /* Slot action buttons: share the row width evenly so nothing clips at edges */
+  .slot-actions { gap: 4px; padding: 6px 4px; }
+  .slot-actions .btn-icon {
+    flex: 1;
+    width: auto;
+    min-width: 0;
+    max-width: 48px;
+    height: 38px;
+    font-size: 15px;
+  }
 
   /* Slot progress row */
   .slot-progress-btn {

@@ -63,7 +63,7 @@ export default function CategorySection({ category, label, icon, slots, queueMod
             title="Clear all library items for this category"
             style={{ fontSize: 12, padding: '4px 8px' }}
           >
-            {confirmClear ? '⚠ Sure?' : '🗑'}
+            {confirmClear ? '⚠ Sure?' : '✕'}
           </button>
           <button className="btn-primary" onClick={handleRerollAll} disabled={rolling}>
             {rolling ? '…' : queueMode ? '⏭ Fill from queue' : '🎲 Reroll'}
