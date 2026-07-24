@@ -238,7 +238,7 @@ export default function LibraryPage({ onBack, onRefresh, hiddenCategories = [] }
 
   const inputStyle: React.CSSProperties = {
     background: 'var(--surface2)', border: '1px solid var(--border)',
-    borderRadius: 6, color: 'var(--text)', padding: '6px 10px', fontSize: 12,
+    borderRadius: 6, color: 'var(--text)', padding: '6px 10px', fontSize: 13,
   }
 
   return (
@@ -274,24 +274,24 @@ export default function LibraryPage({ onBack, onRefresh, hiddenCategories = [] }
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 20px', background: 'var(--surface2)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
         {!reviewMode && (
           <input
-            style={{ ...inputStyle, padding: '7px 12px', fontSize: 13, width: 200 }}
+            style={{ ...inputStyle, padding: '7px 12px', width: 200 }}
             placeholder="🔍 Search…"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
         )}
-        <button className="btn-secondary" onClick={() => setShowAdd(v => !v)} style={{ fontSize: 12 }}>+ Add item</button>
-        <button className="btn-secondary" onClick={() => fileRef.current?.click()} disabled={busy || previewLoading} style={{ fontSize: 12 }}>
+        <button className="btn-secondary" onClick={() => setShowAdd(v => !v)}>+ Add item</button>
+        <button className="btn-secondary" onClick={() => fileRef.current?.click()} disabled={busy || previewLoading}>
           📥 Import CSV
         </button>
         <input ref={fileRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleCSVSelect} />
         {hasCoverAPI && category !== 'comics' && (
-          <button className="btn-secondary" onClick={handleRefreshAll} disabled={refreshingAll || busy} style={{ fontSize: 12 }}>
+          <button className="btn-secondary" onClick={handleRefreshAll} disabled={refreshingAll || busy}>
             {refreshingAll ? '…' : '🖼 Refresh All Covers'}
           </button>
         )}
         {category === 'comics' && (
-          <button className="btn-secondary" onClick={handleComicVineSync} disabled={cvSyncing || busy} style={{ fontSize: 12 }}>
+          <button className="btn-secondary" onClick={handleComicVineSync} disabled={cvSyncing || busy}>
             {cvSyncing ? '…' : '🎨 ComicVine Sync'}
           </button>
         )}
@@ -299,7 +299,7 @@ export default function LibraryPage({ onBack, onRefresh, hiddenCategories = [] }
           <button
             className="btn-secondary"
             onClick={() => { setReviewMode(r => !r); setSearch('') }}
-            style={{ fontSize: 12, color: reviewMode ? 'var(--text)' : 'var(--warning, #e6a817)', borderColor: reviewMode ? undefined : 'var(--warning, #e6a817)' }}
+            style={{ color: reviewMode ? 'var(--text)' : 'var(--warning, #e6a817)', borderColor: reviewMode ? undefined : 'var(--warning, #e6a817)' }}
           >
             {reviewMode ? '← All comics' : `🔍 ${reviewCount} need review`}
           </button>

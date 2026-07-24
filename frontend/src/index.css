@@ -1055,3 +1055,132 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   accent-color: var(--accent);
 }
 .covers-popup-option:hover { color: var(--accent); }
+
+/* ============================================================
+   TOUCH / MOBILE RESPONSIVE
+   ============================================================ */
+
+/* Show hover-only elements on touch devices */
+@media (hover: none) and (pointer: coarse) {
+  .ongoing-tile-remove { opacity: 1; width: 28px; height: 28px; font-size: 13px; }
+  .lib-tile-overlay    { opacity: 1; }
+  .collection-card-overlay { opacity: 1; background: rgba(0,0,0,0.45); }
+
+  /* Covers popup becomes a bottom sheet on touch */
+  .covers-popup {
+    position: fixed;
+    right: 0; left: 0; top: auto; bottom: 0;
+    border-radius: var(--radius) var(--radius) 0 0;
+    min-width: unset;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.5);
+  }
+}
+
+@media (max-width: 640px) {
+  /* ── XP strip ── */
+  .xp-strip { padding: 0 10px; gap: 6px; }
+  .xp-label-next { display: none; }
+
+  /* ── Header ── */
+  .header { padding: 10px 14px; gap: 8px; flex-wrap: wrap; }
+  .header h1 { font-size: 1rem; }
+  .header-actions {
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .header-actions::-webkit-scrollbar { display: none; }
+
+  /* ── Button touch targets ── */
+  .btn-primary   { min-height: 44px; padding: 10px 16px; font-size: 14px; }
+  .btn-secondary { min-height: 44px; padding: 10px 14px; font-size: 14px; }
+  .btn-ghost     { min-height: 44px; padding: 10px 14px; font-size: 14px; }
+  .btn-danger    { min-height: 44px; padding: 10px 14px; font-size: 14px; }
+
+  /* Icon buttons: grow to 38×38, extend tap area to 44×44 via ::before */
+  .btn-icon {
+    position: relative;
+    width: 38px;
+    height: 38px;
+    font-size: 16px;
+  }
+  .btn-icon::before {
+    content: '';
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    width: 44px;
+    height: 44px;
+  }
+
+  /* Tabs */
+  .tab { min-height: 44px; padding: 10px 14px; font-size: 14px; }
+
+  /* ── Stats bar ── */
+  .stats-bar { padding: 8px 14px; }
+
+  /* ── Main grid: single column ── */
+  .main-grid { grid-template-columns: 1fr; padding: 14px; gap: 14px; }
+
+  /* ── Slots: 2-column so each slot is ~160px (enough room for buttons + text) ── */
+  .slots { grid-template-columns: repeat(2, 1fr); }
+
+  /* Slightly more room in the action row */
+  .slot-actions { gap: 6px; padding: 8px 6px; }
+
+  /* Slot progress row */
+  .slot-progress-btn {
+    min-height: 30px;
+    padding: 0 8px;
+    font-size: 12px;
+    line-height: 30px;
+  }
+
+  /* ── Form inputs: 16px prevents iOS zoom on focus ── */
+  input:not([type="file"]):not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+  .form-group input,
+  .form-group select { min-height: 44px; }
+
+  /* ── Modals: bottom sheet ── */
+  .modal-overlay { padding: 0; align-items: flex-end; }
+  .modal {
+    max-width: 100%;
+    max-height: 92vh;
+    border-radius: var(--radius) var(--radius) 0 0;
+    border-left: none;
+    border-right: none;
+    border-bottom: none;
+  }
+  .modal-footer { padding: 14px 16px; }
+
+  /* ── Covers popup: bottom sheet ── */
+  .covers-popup {
+    position: fixed;
+    right: 0; left: 0; top: auto; bottom: 0;
+    border-radius: var(--radius) var(--radius) 0 0;
+    min-width: unset;
+    box-shadow: 0 -4px 24px rgba(0,0,0,0.5);
+  }
+
+  /* ── Ongoing section ── */
+  .ongoing-section { padding: 4px 14px 24px; }
+  .ongoing-tile-remove { opacity: 1; width: 28px; height: 28px; font-size: 13px; }
+
+  /* ── Hover-only overlays: always visible ── */
+  .lib-tile-overlay    { opacity: 1; }
+  .collection-card-overlay { opacity: 1; background: rgba(0,0,0,0.45); }
+
+  /* ── Toast: full width ── */
+  .toast-stack { bottom: 12px; left: 12px; right: 12px; max-width: none; }
+
+  /* ── Sync sections ── */
+  .sync-section { padding: 12px; }
+  .sync-row { gap: 10px; }
+}
