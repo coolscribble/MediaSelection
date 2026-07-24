@@ -64,11 +64,16 @@ export default function SlotCard({ slot, queueMode, onRefresh }: Props) {
         )}
         {!isEmpty && slot.category === 'games' && (
           <span className="slot-subtitle">
-            {typeof slot.metadata?.platform === 'string' && slot.metadata.platform
-              ? slot.metadata.platform
-              : Array.isArray(slot.metadata?.platforms)
-                ? (slot.metadata.platforms as string[]).slice(0, 1).join('')
-                : ''}
+            {(() => {
+              const platform = typeof slot.metadata?.platform === 'string' && slot.metadata.platform
+                ? slot.metadata.platform
+                : Array.isArray(slot.metadata?.platforms)
+                  ? (slot.metadata.platforms as string[]).slice(0, 1).join('')
+                  : ''
+              const hltb = typeof slot.metadata?.hltb_hours === 'number' ? slot.metadata.hltb_hours : null
+              const hltbStr = hltb !== null ? `~${hltb % 1 === 0 ? hltb : hltb.toFixed(1)}h` : ''
+              return [platform, hltbStr].filter(Boolean).join(' · ')
+            })()}
           </span>
         )}
         {!isEmpty && (
