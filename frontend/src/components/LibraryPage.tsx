@@ -242,7 +242,7 @@ export default function LibraryPage({ onBack, onRefresh }: Props) {
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--bg)' }}>
 
       {/* Page header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', position: 'sticky', top: 0, zIndex: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 20px', background: 'var(--surface)', borderBottom: '1px solid var(--border)', flexWrap: 'wrap', position: 'sticky', top: 30, zIndex: 10 }}>
         <button className="btn-ghost" onClick={onBack} style={{ flexShrink: 0, padding: '6px 10px' }}>← Back</button>
         <span style={{ fontWeight: 700, fontSize: 16 }}>📋 Library</span>
         <span style={{ color: 'var(--text2)', fontSize: 13 }}>— {CATEGORY_ICONS[category]} {CATEGORY_LABELS[category]} ({items.length})</span>

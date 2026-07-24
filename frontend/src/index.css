@@ -24,6 +24,97 @@ body {
   font-size: 14px;
 }
 
+/* --- XP strip --- */
+.xp-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 18px;
+  height: 30px;
+  background: #0b0003;
+  border-bottom: 2px solid #3d1200;
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  user-select: none;
+  position: sticky;
+  top: 0;
+  z-index: 11;
+  flex-shrink: 0;
+}
+
+.xp-level {
+  color: #ffcc00;
+  font-weight: 700;
+  font-size: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  text-shadow: 0 0 8px rgba(255, 200, 0, 0.5);
+}
+
+.xp-bar-track {
+  flex: 1;
+  height: 13px;
+  background: #1a0500;
+  border: 1px solid #3d1200;
+  position: relative;
+  overflow: hidden;
+  image-rendering: pixelated;
+}
+
+.xp-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, #aa2200 0%, #ee5500 45%, #ff6600 75%, #ff3300 100%);
+  transition: width 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 0 10px rgba(255, 90, 0, 0.55), inset 0 0 4px rgba(255, 180, 0, 0.2);
+}
+
+.xp-bar-shine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 45%;
+  background: rgba(255, 255, 255, 0.1);
+  pointer-events: none;
+}
+
+/* Pixel segment grid — rendered over the whole track */
+.xp-bar-segments {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0px,
+    transparent 7px,
+    rgba(0, 0, 0, 0.25) 7px,
+    rgba(0, 0, 0, 0.25) 8px
+  );
+  pointer-events: none;
+}
+
+/* Full-width segment overlay sits on top of the fill */
+.xp-bar-segments-overlay {
+  mix-blend-mode: multiply;
+}
+
+.xp-label-current {
+  color: #ff8833;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 11px;
+}
+
+.xp-label-next {
+  color: #883300;
+  white-space: nowrap;
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
 /* --- Header --- */
 .header {
   display: flex;
@@ -33,7 +124,7 @@ body {
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   position: sticky;
-  top: 0;
+  top: 30px; /* sits below the 30px XP strip */
   z-index: 10;
 }
 

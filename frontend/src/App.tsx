@@ -7,6 +7,7 @@ import SettingsModal from './components/SettingsModal'
 import SyncModal from './components/SyncModal'
 import OngoingSection from './components/OngoingSection'
 import ToastContainer from './components/ToastContainer'
+import XPBar from './components/XPBar'
 import LoginPage from './components/LoginPage'
 import PublicProfilePage from './components/PublicProfilePage'
 import LibraryPage from './components/LibraryPage'
@@ -135,6 +136,7 @@ export default function App() {
   if (page === 'library') {
     return (
       <>
+        <XPBar statCounts={statCounts} statProgress={statProgress} />
         <LibraryPage onBack={() => setPage('home')} onRefresh={refresh} />
         <ToastContainer />
       </>
@@ -143,6 +145,7 @@ export default function App() {
 
   return (
     <div>
+      <XPBar statCounts={statCounts} statProgress={statProgress} />
       <header className="header">
         <h1>🎲 Media Picker</h1>
         <div className="header-actions">
