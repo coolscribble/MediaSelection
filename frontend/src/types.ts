@@ -110,6 +110,8 @@ export interface Settings {
   ra_username: string
   ra_api_key_set: boolean
   ra_skip_mastered: boolean
+  ra_skip_beaten: boolean
+  hidden_categories: string[]
 }
 
 export const ANILIST_STATE_OPTIONS = [

@@ -39,11 +39,23 @@ async function getCompletedGames(username, apiKey) {
   return Array.isArray(data) ? data : [];
 }
 
+async function getUserAwards(username, apiKey) {
+  const data = await raFetch('API_GetUserAwards.php', { z: username, y: apiKey });
+  const beatenIds = new Set();
+  const masteredIds = new Set();
+  for (const award of (data?.VisibleUserAwards || [])) {
+    if (award.AwardType === 'Game Beaten') beatenIds.add(award.AwardData);
+    else if (award.AwardType === 'Mastery/Completion') masteredIds.add(award.AwardData);
+  }
+  return { beatenIds, masteredIds };
+}
+
 async function syncRetroAchievements(userId) {
-  const [userRow, keyRow, skipRow] = await Promise.all([
+  const [userRow, keyRow, skipMasteredRow, skipBeatenRow] = await Promise.all([
     db.get("SELECT value FROM settings WHERE user_id = ? AND key = 'ra_username'", [userId]),
     db.get("SELECT value FROM settings WHERE user_id = ? AND key = 'ra_api_key'", [userId]),
     db.get("SELECT value FROM settings WHERE user_id = ? AND key = 'ra_skip_mastered'", [userId]),
+    db.get("SELECT value FROM settings WHERE user_id = ? AND key = 'ra_skip_beaten'", [userId]),
   ]);
 
   if (!userRow?.value || !keyRow?.value) {
@@ -52,12 +64,20 @@ async function syncRetroAchievements(userId) {
 
   const username = userRow.value.trim();
   const apiKey = keyRow.value.trim();
-  const skipMastered = skipRow?.value === 'true';
+  const skipMastered = skipMasteredRow?.value === 'true';
+  const skipBeaten = skipBeatenRow?.value === 'true';
 
-  const [recent, completed] = await Promise.all([
+  const fetchList = [
     getAllRecentlyPlayed(username, apiKey),
     getCompletedGames(username, apiKey),
-  ]);
+  ];
+  if (skipBeaten || skipMastered) fetchList.push(getUserAwards(username, apiKey));
+
+  const results = await Promise.all(fetchList);
+  const [recent, completed] = results;
+  const awards = results[2] || null;
+  const beatenIds = awards ? awards.beatenIds : new Set();
+  const masteredIds = awards ? awards.masteredIds : new Set();
 
   // Merge into unified map keyed by GameID
   const gamesMap = new Map();
@@ -97,7 +117,8 @@ async function syncRetroAchievements(userId) {
   let added = 0, updated = 0, skipped = 0;
 
   for (const game of gamesMap.values()) {
-    if (skipMastered && game.pct === 100) { skipped++; continue; }
+    if (skipMastered && (game.pct === 100 || masteredIds.has(game.id))) { skipped++; continue; }
+    if (skipBeaten && beatenIds.has(game.id)) { skipped++; continue; }
 
     const thumbnail = thumb(game.icon);
     const raMeta = {

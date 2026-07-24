@@ -21,11 +21,12 @@ const DEFAULT_SETTINGS: Settings = {
   tmdb_api_key_set: false, tmdb_session_set: false,
   steam_id: '',
   xbox_key_set: false, xbox_gamertag: '',
-  ra_username: '', ra_api_key_set: false, ra_skip_mastered: false,
+  ra_username: '', ra_api_key_set: false, ra_skip_mastered: false, ra_skip_beaten: false,
+  hidden_categories: [],
 }
 
 export default function SettingsModal({ onClose, username }: Props) {
-  const [tab, setTab] = useState<'connections' | 'states' | 'queue' | 'profile'>('connections')
+  const [tab, setTab] = useState<'connections' | 'states' | 'queue' | 'display' | 'profile'>('connections')
   const [s, setS] = useState<Settings>(DEFAULT_SETTINGS)
   const [clientId, setClientId] = useState('')
   const [igdbClientId, setIgdbClientId] = useState('')
@@ -67,8 +68,10 @@ export default function SettingsModal({ onClose, username }: Props) {
   const [raUsername, setRaUsername] = useState('')
   const [raApiKey, setRaApiKey] = useState('')
   const [raSkipMastered, setRaSkipMastered] = useState(false)
+  const [raSkipBeaten, setRaSkipBeaten] = useState(false)
   const [raMsg, setRaMsg] = useState('')
   const [raBusy, setRaBusy] = useState(false)
+  const [hiddenCategories, setHiddenCategories] = useState<string[]>([])
 
   useEffect(() => {
     getSettings()
@@ -89,6 +92,8 @@ export default function SettingsModal({ onClose, username }: Props) {
         setXboxGamertag(data.xbox_gamertag ?? '')
         setRaUsername(data.ra_username ?? '')
         setRaSkipMastered(data.ra_skip_mastered ?? false)
+        setRaSkipBeaten(data.ra_skip_beaten ?? false)
+        setHiddenCategories(data.hidden_categories ?? [])
         setSettingsLoaded(true)
       })
       .catch(() => {
@@ -124,6 +129,8 @@ export default function SettingsModal({ onClose, username }: Props) {
         ra_username: raUsername,
         ...(raApiKey && { ra_api_key: raApiKey }),
         ra_skip_mastered: raSkipMastered,
+        ra_skip_beaten: raSkipBeaten,
+        hidden_categories: hiddenCategories,
       })
       setMsg('Saved')
       setS(prev => ({ ...prev, queue_modes: queueModes as Settings['queue_modes'] }))
@@ -253,6 +260,7 @@ export default function SettingsModal({ onClose, username }: Props) {
             <button className={`tab${tab === 'connections' ? ' active' : ''}`} onClick={() => setTab('connections')}>Connections</button>
             <button className={`tab${tab === 'states' ? ' active' : ''}`} onClick={() => setTab('states')}>Sync States</button>
             <button className={`tab${tab === 'queue' ? ' active' : ''}`} onClick={() => setTab('queue')}>Queue Mode</button>
+            <button className={`tab${tab === 'display' ? ' active' : ''}`} onClick={() => setTab('display')}>Display</button>
             <button className={`tab${tab === 'profile' ? ' active' : ''}`} onClick={() => setTab('profile')}>Profile</button>
           </div>
 
@@ -583,13 +591,21 @@ export default function SettingsModal({ onClose, username }: Props) {
                     placeholder={s.ra_api_key_set ? '••••••••• (saved)' : 'from retroachievements.org/settings'}
                   />
                 </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, marginBottom: 10 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, marginBottom: 6 }}>
                   <input
                     type="checkbox"
                     checked={raSkipMastered}
                     onChange={e => setRaSkipMastered(e.target.checked)}
                   />
-                  Skip 100% mastered games (already fully completed)
+                  Skip 100% mastered games (all achievements earned)
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, marginBottom: 10 }}>
+                  <input
+                    type="checkbox"
+                    checked={raSkipBeaten}
+                    onChange={e => setRaSkipBeaten(e.target.checked)}
+                  />
+                  Skip beaten games (core content completed, even if not 100%)
                 </label>
                 <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
                   Get your API key at <strong>retroachievements.org/settings</strong> → API Key section (free account required).
@@ -661,6 +677,27 @@ export default function SettingsModal({ onClose, username }: Props) {
                     type="checkbox"
                     checked={Boolean(queueModes[cat])}
                     onChange={e => setQueueModes(prev => ({ ...prev, [cat]: e.target.checked }))}
+                  />
+                  <span>{CATEGORY_ICONS[cat]} {CATEGORY_LABELS[cat]}</span>
+                </label>
+              ))}
+            </div>
+          )}
+
+          {tab === 'display' && (
+            <div className="sync-section">
+              <h3>Visible categories</h3>
+              <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 14 }}>
+                Uncheck a category to hide it everywhere: home page slots, library tabs, and collections. The data is never deleted — just hidden from view.
+              </p>
+              {CATEGORIES.map(cat => (
+                <label key={cat} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', borderBottom: '1px solid var(--border)', cursor: 'pointer', fontSize: 13 }}>
+                  <input
+                    type="checkbox"
+                    checked={!hiddenCategories.includes(cat)}
+                    onChange={e => setHiddenCategories(prev =>
+                      e.target.checked ? prev.filter(c => c !== cat) : [...prev, cat]
+                    )}
                   />
                   <span>{CATEGORY_ICONS[cat]} {CATEGORY_LABELS[cat]}</span>
                 </label>

@@ -36,9 +36,10 @@ interface Collection {
 interface Props {
   onBack: () => void
   onRefresh: () => void
+  hiddenCategories?: string[]
 }
 
-export default function CollectionsPage({ onBack, onRefresh }: Props) {
+export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = [] }: Props) {
   const [collections, setCollections] = useState<Collection[]>([])
   const [loading, setLoading] = useState(true)
   const [catFilter, setCatFilter] = useState('all')
@@ -187,7 +188,7 @@ export default function CollectionsPage({ onBack, onRefresh }: Props) {
 
       {/* Category tabs */}
       <div style={{ display: 'flex', gap: 4, padding: '12px 20px 0', overflowX: 'auto', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
-        {['all', ...CATEGORIES].map(cat => (
+        {['all', ...CATEGORIES.filter(c => !hiddenCategories.includes(c))].map(cat => (
           <button key={cat} onClick={() => setCatFilter(cat)}
             style={{ padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer', fontWeight: catFilter === cat ? 700 : 400, fontSize: 13, whiteSpace: 'nowrap',
               background: catFilter === cat ? 'var(--accent)' : 'var(--bg)', color: catFilter === cat ? '#fff' : 'var(--text)' }}>

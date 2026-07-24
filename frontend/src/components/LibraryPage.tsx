@@ -10,6 +10,7 @@ import { toast, dismiss } from '../notifications'
 interface Props {
   onBack: () => void
   onRefresh: () => void
+  hiddenCategories?: string[]
 }
 
 const COVER_CATEGORIES: Category[] = ['games', 'albums', 'comics', 'anime', 'manga']
@@ -28,7 +29,7 @@ interface CVCandidate {
   thumb: string | null
 }
 
-export default function LibraryPage({ onBack, onRefresh }: Props) {
+export default function LibraryPage({ onBack, onRefresh, hiddenCategories = [] }: Props) {
   const [category, setCategory] = useState<Category>('games')
   const [items, setItems] = useState<LibraryItem[]>([])
   const [search, setSearch] = useState('')
@@ -254,7 +255,7 @@ export default function LibraryPage({ onBack, onRefresh }: Props) {
         <div style={{ flex: 1 }} />
         {/* Category tabs */}
         <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-          {CATEGORIES.map(c => (
+          {CATEGORIES.filter(c => !hiddenCategories.includes(c)).map(c => (
             <button
               key={c}
               onClick={() => setCategory(c)}

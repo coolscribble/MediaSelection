@@ -40,6 +40,8 @@ router.get('/', async (req, res) => {
       ra_username:          map.ra_username || '',
       ra_api_key_set:       Boolean(map.ra_api_key),
       ra_skip_mastered:     map.ra_skip_mastered === 'true',
+      ra_skip_beaten:       map.ra_skip_beaten === 'true',
+      hidden_categories:    JSON.parse(map.hidden_categories || '[]'),
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -62,11 +64,14 @@ router.post('/', async (req, res) => {
     if (req.body.ra_skip_mastered !== undefined) {
       await upsert('ra_skip_mastered', req.body.ra_skip_mastered ? 'true' : 'false');
     }
+    if (req.body.ra_skip_beaten !== undefined) {
+      await upsert('ra_skip_beaten', req.body.ra_skip_beaten ? 'true' : 'false');
+    }
     for (const key of scalar) {
       if (req.body[key] !== undefined) await upsert(key, req.body[key]);
     }
 
-    const jsonArr = ['anilist_states', 'simkl_states', 'mal_anime_states', 'mal_manga_states'];
+    const jsonArr = ['anilist_states', 'simkl_states', 'mal_anime_states', 'mal_manga_states', 'hidden_categories'];
     for (const key of jsonArr) {
       if (Array.isArray(req.body[key])) await upsert(key, JSON.stringify(req.body[key]));
     }

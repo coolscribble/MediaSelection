@@ -140,11 +140,14 @@ export default function App() {
   if (!user) return <LoginPage onLogin={handleLogin} />
   if (loading) return <div className="loading">Loading…</div>
 
+  const hiddenCategories = settings?.hidden_categories ?? []
+  const visibleCategories = CATEGORIES.filter(c => !hiddenCategories.includes(c))
+
   if (page === 'library') {
     return (
       <>
         <XPBar statCounts={statCounts} statProgress={statProgress} gameHours={statGameHours} gamesWithHltb={statGamesWithHltb} collectionBonus={statCollectionBonus} />
-        <LibraryPage onBack={() => setPage('home')} onRefresh={refresh} />
+        <LibraryPage onBack={() => setPage('home')} onRefresh={refresh} hiddenCategories={hiddenCategories} />
         <ToastContainer />
       </>
     )
@@ -154,7 +157,7 @@ export default function App() {
     return (
       <>
         <XPBar statCounts={statCounts} statProgress={statProgress} gameHours={statGameHours} gamesWithHltb={statGamesWithHltb} collectionBonus={statCollectionBonus} />
-        <CollectionsPage onBack={() => setPage('home')} onRefresh={refresh} />
+        <CollectionsPage onBack={() => setPage('home')} onRefresh={refresh} hiddenCategories={hiddenCategories} />
         <ToastContainer />
       </>
     )
@@ -218,7 +221,7 @@ export default function App() {
 
       <div className="stats-bar">
         <span className="stats-label">Finished:</span>
-        {CATEGORIES.map(c => {
+        {visibleCategories.map(c => {
           const count = statCounts[c] ?? 0
           const prog  = statProgress[c] ?? 0
           const unit  = c === 'manga' || c === 'comics' ? 'ch' : c === 'series' || c === 'anime' ? 'ep' : null
@@ -232,7 +235,7 @@ export default function App() {
       </div>
 
       <main className="main-grid">
-        {CATEGORIES.map(cat => (
+        {visibleCategories.map(cat => (
           <CategorySection
             key={cat}
             category={cat}
