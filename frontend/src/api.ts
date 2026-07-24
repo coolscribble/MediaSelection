@@ -142,12 +142,11 @@ export const pollSimklPin   = (uc: string) => call(`/api/sync/simkl/pin/${uc}`)
 
 // --- Import ---
 
-export const importCSV = async (category: string, file: File, platforms?: string[], acquisitionTypes?: string[], retro?: boolean) => {
+export const importCSV = async (category: string, file: File, platforms?: string[], acquisitionTypes?: string[]) => {
   const form = new FormData()
   form.append('file', file)
   if (platforms && platforms.length > 0) form.append('platforms', JSON.stringify(platforms))
   if (acquisitionTypes && acquisitionTypes.length > 0) form.append('acquisitionTypes', JSON.stringify(acquisitionTypes))
-  if (retro) form.append('retro', 'true')
   return call(`/api/import/csv/${category}`, { method: 'POST', body: form })
 }
 

@@ -102,9 +102,10 @@ function normalizeComicsTitle(t) {
 
 // Generic "digital" labels — never shown as filter options; games with only these values
 // are always imported regardless of the service filter (can't be categorised further).
-// "Retro Achievement" appears as a Digital service value in InfiniteBacklog exports —
-// it is a tracking system, not an acquisition store, so treat it as a pass-through.
-const GENERIC_DIGITAL = new Set(['digital', 'download', 'digital copy', 'downloadable']);
+const GENERIC_DIGITAL = new Set([
+  'digital', 'download', 'digital copy', 'downloadable',
+  'retro achievement', 'retro achievements', 'retroachievement', 'retroachievements',
+]);
 
 // Known service/format values to identify filterable columns in the CSV
 const SERVICE_VALUE_SET = new Set([
@@ -113,7 +114,6 @@ const SERVICE_VALUE_SET = new Set([
   'steam', 'gog', 'gog galaxy', 'epic', 'epic games', 'epic games store',
   'xbox', 'xbox game pass', 'game pass', 'gamepass', 'microsoft store',
   'nintendo', 'nintendo eshop', 'eshop',
-  'retro achievement', 'retro achievements', 'retroachievement', 'retroachievements',
   'ea app', 'ea', 'origin', 'ubisoft', 'ubisoft connect', 'uplay',
   'amazon', 'amazon games', 'prime gaming',
   'humble', 'humble bundle', 'itch.io',
@@ -142,17 +142,12 @@ function detectServiceColumns(records) {
   return results;
 }
 
-// Column header names that indicate a Retro Achievements tracking column
-const RA_HEADERS = new Set(['retro achievement', 'retro achievements', 'retroachievement', 'retroachievements', 'ra', 'achievement service', 'retro']);
-
 async function previewCSV(buffer, category) {
   const records = await parseCSV(buffer);
 
   if (category !== 'games' || records.length === 0) {
-    return { platforms: [], serviceValues: [], filterColumns: [], hasRetroAchievements: false };
+    return { platforms: [], serviceValues: [], filterColumns: [] };
   }
-
-  const headers = Object.keys(records[0]);
 
   // Unique platform values from the Platform column
   const platformCol = ['Platform', 'platform', 'PLATFORM', 'Gaming System', 'System'].find(h => records[0][h] !== undefined);
@@ -164,14 +159,7 @@ async function previewCSV(buffer, category) {
   const filterColumns = detectServiceColumns(records);
   const serviceValues = [...new Set(filterColumns.flatMap(c => c.values))].sort();
 
-  // Retro Achievements detected by column name — values are numeric (achievement count)
-  const raCol = headers.find(h => RA_HEADERS.has(h.toLowerCase()));
-  const hasRetroAchievements = !!raCol && records.some(r => {
-    const v = (r[raCol] || '').trim();
-    return v && v !== '0';
-  });
-
-  return { platforms, serviceValues, filterColumns, hasRetroAchievements };
+  return { platforms, serviceValues, filterColumns };
 }
 
 // Game statuses — shared between importCSV and importQueueCSV
@@ -232,17 +220,6 @@ async function importCSV(buffer, category, options = {}) {
         const platform = (r['Platform'] || r['platform'] || '').trim().toLowerCase();
         if (platform && !platformFilter.has(platform)) {
           console.log(`[csv] SKIP (platform filter): "${_gameTitle}" platform="${r['Platform'] || ''}"`);
-          continue;
-        }
-      }
-
-      // Retro Achievements filter — only import games that have RA tracking data
-      if (options.retro) {
-        const raHeadersInRow = Object.keys(r);
-        const raCol = raHeadersInRow.find(h => RA_HEADERS.has(h.toLowerCase()));
-        const raVal = raCol ? (r[raCol] || '').trim() : '';
-        if (!raVal || raVal === '0') {
-          console.log(`[csv] SKIP (retro filter): "${_gameTitle}"`);
           continue;
         }
       }

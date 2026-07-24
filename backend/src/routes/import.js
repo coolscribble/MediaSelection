@@ -25,12 +25,10 @@ router.post('/csv/:category', upload.single('file'), async (req, res) => {
     if (req.body.acquisitionTypes) {
       try { acquisitionTypes = JSON.parse(req.body.acquisitionTypes); } catch {}
     }
-    const retro = req.body.retro === 'true';
     const result = await importCSV(req.file.buffer, req.params.category, {
       userId: req.userId,
       platforms,
       acquisitionTypes,
-      retro,
     });
     res.json(result);
   } catch (e) { res.status(500).json({ error: e.message }); }

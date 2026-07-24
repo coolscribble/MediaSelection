@@ -215,6 +215,16 @@ async function init() {
       added_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  await db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_library_user_cat    ON library_items(user_id, category);
+    CREATE INDEX IF NOT EXISTS idx_library_user_extid  ON library_items(user_id, external_id);
+    CREATE INDEX IF NOT EXISTS idx_slots_user          ON slots(user_id);
+    CREATE INDEX IF NOT EXISTS idx_queue_user_cat      ON queue_items(user_id, category, consumed);
+    CREATE INDEX IF NOT EXISTS idx_ongoing_user        ON ongoing_items(user_id);
+    CREATE INDEX IF NOT EXISTS idx_col_items_col       ON collection_items(collection_id);
+    CREATE INDEX IF NOT EXISTS idx_collections_user    ON collections(user_id)
+  `);
 }
 
 module.exports = { db, init, ensureUserSlots, cleanExpiredSessions };

@@ -20,7 +20,6 @@ interface CSVPreview {
   platforms: string[]
   serviceValues: string[]
   filterColumns: { column: string; values: string[] }[]
-  hasRetroAchievements: boolean
 }
 
 interface CVCandidate {
@@ -44,7 +43,6 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
   const [csvPreview, setCsvPreview] = useState<CSVPreview | null>(null)
   const [selectedAcqTypes, setSelectedAcqTypes] = useState<Set<string>>(new Set())
   const [selectedPlatforms, setSelectedPlatforms] = useState<Set<string>>(new Set())
-  const [retroOnly, setRetroOnly] = useState(false)
   const [previewLoading, setPreviewLoading] = useState(false)
   // Cover edit
   const [editingCoverId, setEditingCoverId] = useState<number | null>(null)
@@ -203,9 +201,8 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
         setCsvPreview(preview)
         setSelectedAcqTypes(new Set(preview.serviceValues))
         setSelectedPlatforms(new Set(preview.platforms))
-        setRetroOnly(false)
       } catch {
-        setCsvPreview({ platforms: [], serviceValues: [], filterColumns: [], hasRetroAchievements: false })
+        setCsvPreview({ platforms: [], serviceValues: [], filterColumns: [] })
       } finally { setPreviewLoading(false) }
     } else {
       setBusy(true)
@@ -229,7 +226,7 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
       const acqArr = selectedAcqTypes.size > 0 && csvPreview?.serviceValues.length
         ? [...selectedAcqTypes]
         : undefined
-      const result = await importCSV(category, csvFile, platformArr, acqArr, retroOnly) as { imported: number; refreshed: number }
+      const result = await importCSV(category, csvFile, platformArr, acqArr) as { imported: number; refreshed: number }
       const refreshedStr = result.refreshed > 0 ? `, ${result.refreshed} refreshed` : ''
       setMsg(`Imported ${result.imported} new${refreshedStr}`)
       setCsvFile(null); setCsvPreview(null)
@@ -348,14 +345,6 @@ export default function LibraryModal({ category, label, onClose, onRefresh }: Pr
                     </>
                   ) : (
                     <div style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>No acquisition type filter detected — will import all games.</div>
-                  )}
-                  {csvPreview?.hasRetroAchievements && (
-                    <div style={{ marginBottom: 12 }}>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, cursor: 'pointer' }}>
-                        <input type="checkbox" checked={retroOnly} onChange={e => setRetroOnly(e.target.checked)} />
-                        <span>Only import games with Retro Achievements data</span>
-                      </label>
-                    </div>
                   )}
                   <div style={{ display: 'flex', gap: 8 }}>
                     <button className="btn-primary" onClick={handleCSVConfirm} disabled={busy}>{busy ? 'Importing…' : '✓ Import'}</button>

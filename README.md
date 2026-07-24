@@ -4,7 +4,30 @@
 
 ---
 
-MediaPicker is a self-hosted backlog manager and randomizer for people who can never decide what to watch, read, or play next. It tracks your backlog across seven media categories, randomly assigns items to slots so you always have something to pick from, and keeps tabs on what is currently airing.
+MediaPicker is a self-hosted backlog manager and randomizer for people who can never decide what to watch, read, or play next. It tracks your backlog across seven media categories, randomly fills slots so you always have something queued up, and pulls live data from the services you already use.
+
+---
+
+## Setup
+
+```yaml
+# docker-compose.yml
+services:
+  mediapicker:
+    image: ghcr.io/lilcipra/mediapicker:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - /path/to/data:/data
+    environment:
+      - JWT_SECRET=your-secret-here
+    restart: unless-stopped
+```
+
+```bash
+docker compose up -d
+# Open http://localhost:3000
+```
 
 ---
 
@@ -12,187 +35,162 @@ MediaPicker is a self-hosted backlog manager and randomizer for people who can n
 
 ### 🔐 Authentication
 
-The login page has three options:
-
 | Option | Description |
 |---|---|
-| 🎬 **Jellyfin** | Sign in with an existing Jellyfin server. Each Jellyfin user gets their own library, queue, slots, and settings. |
-| 👤 **Local Account** | Register a username and password stored only on this server (bcrypt-hashed). Full per-user data isolation. |
-| Anonymous | **Continue without account** — data stored under a shared `local` account. |
-
-If `LOCAL_PASSCODE` is set in your environment, it acts as an **invite code** required for both local account registration and anonymous login — useful for keeping a public deployment controlled.
-
-### 🎰 Slot randomizer
-Each category has three slots filled randomly from your library. Per slot you can:
-- **🔒 Lock** — keep the current item while rerolling the others
-- **🎲 Reroll** — swap it for something else from the library
-- **🔍 Pick manually** — search and assign a specific item
-- **✓ Mark done** — sends the item to the finish counter and draws the next one; the item and its local cover file are deleted automatically
-- **Progress tracking** — anime, manga, series, and comics slots have an episode/chapter counter
-- **Notes** — a text field per slot for reminders or thoughts
-
-### 📚 Seven categories
-Movies · Series · Anime · Manga · Games · Comics · Albums — each with its own library, slots, queue, and finish counter.
-
-### 📋 Queue mode
-Enable queue mode per category and slots pull items in order from a hand-curated list instead of randomly. Build the queue manually or import via CSV. Toggle per category in **Settings → Queue Mode**.
-
-### 📺 Currently Releasing
-A live section showing everything you are actively following that is still airing. Syncs from AniList (anime/manga) and Simkl (TV shows). Ended and cancelled shows are filtered out automatically. Each tile shows episodes/chapters aired and a **👁 watched** counter you can type into directly.
-
-### 🔢 Finish counter
-A stats bar at the top shows how many items you have finished per category, plus a running total of episodes watched and chapters read.
-
-### 🌐 Public profile
-Any user can make their profile publicly viewable at `/user/username`. Enable it in **Settings → Profile** — a copyable link is shown. Visitors see your current randomized picks with cover art, progress, notes, and library counts. The page is fully read-only and private by default.
-
-### 🖼️ Cover art
-
-| Category | Source | API key needed |
-|---|---|---|
-| 🎮 Games | IGDB via Twitch | Yes — free at dev.twitch.tv |
-| 💬 Comics | ComicVine | Yes — free at comicvine.gamespot.com/api |
-| 🎵 Albums | iTunes / Deezer / MusicBrainz | No |
-| ⛩️ Anime · 📚 Manga | AniList | No |
-| 📺 Series · 🎬 Movies | Simkl | No |
-
-Click **🖼 Covers** in the header to refresh covers for any category. The dropdown lets you pick which categories to update. Cover files are stored locally in your data folder and deleted automatically when the library item is removed.
-
-ComicVine is rate-limited to 200 requests/hour on the free tier. The sync pauses and resumes automatically.
-
-If ComicVine matches a comic to the wrong volume, open the **💬 Comics** library, click **✏** on the item, and enter the correct ComicVine volume ID in the **ComicVine ID** field — found in the URL on comicvine.gamespot.com. Click **Set ID & Resync** to fetch the correct cover immediately.
-
-### 🗑️ Clear library
-Each category header has a **🗑** button. First click turns red showing **⚠ Sure?** — click again within three seconds to wipe that category's library. Cover files are deleted from disk and slots are cleared.
-
-### 🔔 Toast notifications
-Bottom-left notifications confirm when syncs, imports, and cover fetches complete or fail.
+| 🎬 **Jellyfin** | Sign in with an existing Jellyfin server. Each Jellyfin user gets their own isolated library, slots, and settings. |
+| 👤 **Local Account** | Register a username and password stored on this server (bcrypt-hashed). Multi-user supported. |
+| 🔗 **Public Profile** | Optional read-only profile page at `/user/<username>` shareable with others. |
 
 ---
 
-## Tech stack
+### 🗂 Media Categories
 
-| Layer | Technology |
+Seven categories, each fully independent with its own library, slots, queue, and stats:
+
+| Icon | Category | Notes |
+|---|---|---|
+| 🎬 | **Movies** | TMDB integration, Simkl sync, collection auto-detect |
+| 📺 | **Series** | Simkl sync, episode tracking, airing status |
+| ⛩️ | **Anime** | AniList + MAL sync, episode tracking, collection auto-detect |
+| 📚 | **Manga** | AniList + MAL sync, chapter tracking |
+| 🎮 | **Games** | IGDB covers, HLTB time estimates, Steam/PSN/Xbox/RA import |
+| 💬 | **Comics** | ComicVine covers, chapter tracking |
+| 🎵 | **Albums** | iTunes cover art |
+
+You can hide any category from the main page, library, and collections via **Settings → Display**.
+
+---
+
+### 🎲 Slots
+
+Each category has **3 random slots** filled from your library. Slots are your active picks — whatever is in a slot is what you should be doing next.
+
+| Action | Description |
 |---|---|
-| Frontend | React 18, TypeScript, Vite |
-| Backend | Node.js, Express |
-| Database | SQLite via libsql (`@libsql/client`) |
-| Container | Docker + Docker Compose |
-| Auth | Jellyfin, local accounts (bcryptjs), anonymous |
-| Security | Helmet, express-rate-limit, httpOnly cookies, SSRF protection |
+| 🔒 **Lock** | Keep this item in the slot; it won't be replaced on reroll |
+| 🔀 **Reroll** | Pick a new random item from the library (unlocked slots only) |
+| 🔍 **Manual select** | Search your library and assign a specific item |
+| ✅ **Complete** | Mark done — item moves to stats, slot opens up |
+| 📝 **Note** | Attach a freeform note to the slot |
+| 📊 **Progress** | Track episodes, chapters, or hours directly on the slot |
 
 ---
 
-## Running with Docker
+### 📋 Queue Mode
 
-### Prerequisites
-- Docker Desktop
-- A folder on your machine for persistent data (database and cover images live here)
+Enable per-category in **Settings → Queue**. When active, completing a slot automatically pulls in the next item from the queue instead of rerolling randomly. Items in the queue can be reordered by drag-and-drop.
 
-### docker-compose.yml
+---
 
-```yaml
-services:
-  mediapicker:
-    build: .
-    ports:
-      - "3000:3000"
-    volumes:
-      - /your/data/path:/data
-    restart: unless-stopped
-    environment:
-      - PORT=3000
-      - DATA_DIR=/data
-      - NODE_ENV=production
-      - ALLOWED_ORIGIN=https://yourdomain.com
-      - LOCAL_PASSCODE=change-me
-```
+### ⚡ XP & Leveling
 
-Replace `/your/data/path` with an absolute path to a folder on your machine.
+Completing items earns XP shown in the bar at the top of the screen. The level curve is exponential (`100 × 1.4^(level-1)` XP per level).
 
-| Variable | Required | Description |
+| Category | XP per completion |
+|---|---|
+| Movies | 120 XP flat |
+| Series | 30 XP per episode |
+| Anime | 15 XP per episode |
+| Manga | 1 XP per chapter |
+| Games | 40 XP per HLTB hour (min 120 XP) |
+| Comics | 1 XP per chapter |
+| Albums | 40 XP flat |
+
+Completing an entire **Collection** awards a bonus on top of the individual item XP.
+
+---
+
+### 📡 Ongoing Tracker
+
+A separate section below the main grid shows currently airing series, anime, and manga with live episode counts and next-air-date countdowns. Syncs from AniList (anime/manga) and Simkl (TV shows).
+
+---
+
+### 🗂 Collections
+
+Group related items into franchises or series. Collections appear on the Collections page with a completion progress bar.
+
+| Feature | Description |
+|---|---|
+| **Manual** | Create a collection, add items from your library |
+| **Auto-detect Movies** | Finds TMDB movie collections across your movie library |
+| **Auto-detect Anime** | Uses the AniList relations graph (BFS over SEQUEL/PREQUEL/PARENT/SIDE_STORY links) to find franchise groups |
+
+---
+
+### 📥 Importing Your Library
+
+#### Sync from tracking services
+
+Open **⟳ Sync** from the header to pull your lists from:
+
+| Service | Categories | Notes |
 |---|---|---|
-| `NODE_ENV=production` | Recommended | Enables `Secure` flag on session cookies (HTTPS only) |
-| `ALLOWED_ORIGIN` | Recommended | CORS origin restriction — set to your public domain |
-| `LOCAL_PASSCODE` | Optional | Invite code required for anonymous login and local account registration. Remove it to allow open registration on a LAN. |
+| **AniList** | Anime, Manga | Choose which statuses to import (Planning, Watching, Completed, etc.) |
+| **MyAnimeList** | Anime, Manga | Via Jikan public API — no API key needed |
+| **Simkl** | Movies, TV Shows, Anime | OAuth login required; choose which statuses to import |
+| **TMDB** | Movies | Imports your TMDB watchlist; OAuth session required |
+| **Steam** | Games | Steam ID + session cookie; fetches full library |
+| **PlayStation (PSN)** | Games | PSN ID sync |
+| **Xbox** | Games | Gamertag lookup via xbl.io API key |
+| **RetroAchievements** | Games | Imports your RA game library with achievement progress |
 
-```bash
-docker compose up --build -d
-```
+#### CSV Import
 
-Open [http://localhost:3000](http://localhost:3000). You will be prompted to log in.
+Library → Upload CSV. Works with exports from:
 
----
+- **InfiniteBacklog** (games — platform and acquisition type filters included)
+- **Letterboxd** (movies)
+- **Trakt** (movies, series)
+- Any CSV with a `title` column
 
-## API integrations
+For game CSVs, an optional platform filter lets you include only specific systems. An acquisition type filter (Steam, PSN, Physical, etc.) lets you narrow to specific storefronts.
 
-### AniList (anime + manga)
-No API key required. Enter your AniList username in **Settings → Connections**. Syncs your watchlist and fetches airing schedules.
+#### Manual Add
 
-### Simkl (movies + series + anime)
-1. Create a free app at [simkl.com/apps](https://simkl.com/apps) to get a Client ID.
-2. Paste it in **Settings → Connections → Simkl**.
-3. Click **Authorize via PIN** and follow the on-screen steps.
-
-### MyAnimeList (anime + manga)
-No API key required. Enter your MAL username in **Settings → Connections**. Profile must be public. Uses the Jikan API.
-
-### IGDB (game covers)
-1. Register a free app at [dev.twitch.tv/console](https://dev.twitch.tv/console).
-2. Paste the **Client ID** and **Client Secret** in **Settings → Connections → IGDB**.
-3. Click **🖼 Covers → 🎮 Games** in the header to fetch cover art.
-
-### ComicVine (comic covers)
-1. Get a free API key at [comicvine.gamespot.com/api](https://comicvine.gamespot.com/api/).
-2. Paste it in **Settings → Connections → ComicVine**.
-3. In the Comics library click **🎨 ComicVine Sync**.
-4. Rate limit: 200 requests/hour. The sync pauses automatically and resumes after the window resets.
-5. If a comic matched the wrong volume, use the **✏ → ComicVine ID** field to correct it.
-
-### iTunes / Deezer / MusicBrainz (album covers)
-No configuration needed. Click **🖼 Covers → 🎵 Albums**.
+Type a title and optional thumbnail URL directly in the Library page.
 
 ---
 
-## CSV import
+### 🖼 Cover Art
 
-CSV import is available per category via the **📥 Import CSV** button in the library modal.
+Covers are fetched from category-appropriate APIs and optionally cached locally on your server.
 
-### Games (InfiniteBacklog)
-```
-IGDB ID,Game name,Game release date,...,Platform,Type,Status,Completion,...
-315367,"LEGO Harry Potter Collection",2024-10-08,...,PlayStation 5,,Playing,Unfinished,...
-```
-Rows with `Completion = Completed` or `Beaten` are skipped unless `Status = Playing`. A platform and acquisition-type picker appears before confirming the import.
+| Category | Cover source |
+|---|---|
+| Games | IGDB (requires Client ID + Secret) |
+| Albums | iTunes Search API (no key needed) |
+| Comics | ComicVine (API key required) |
+| Anime / Manga | AniList |
+| Movies / Series | Simkl |
 
-### Comics (CLZ / ComicBase)
-```
-Publisher Name,Series Name,Full Title,Release Date,Marked Read,...
-Marvel,Spider-Man,Spider-Man #1,1990-08-01,0,...
-```
-`Marked Read = 1` rows are skipped. Issue numbers are stripped and series deduplicated so each volume appears once.
-
-### Albums (RateYourMusic / generic)
-```
-Artist,Album,Year
-Charli XCX,BRAT,2024
-slowthai,UGLY,2023
-```
-
-### Everything else
-Any CSV with a `Title` or `Name` column. Optional columns: `thumbnail`, `Platform`, `Status`.
+Use **🖼 Covers ▾** in the header to refresh covers for selected categories. Individual covers can also be set via URL or by uploading an image file in the Library view.
 
 ---
 
-## Known limitations
+### 🏆 RetroAchievements Integration
 
-- **⟳ Update** button is a work in progress — it runs but results may be incomplete.
-- Simkl does not return per-episode totals from its API, so the watched counter in Currently Releasing won't show a `/total` denominator for Simkl-sourced shows.
-- ComicVine matches on series title only — generic names like "Batman" may match the wrong volume. Use the **ComicVine ID** field to correct mismatches.
-- The `local` account is shared — multiple people using the instance without a personal account will see the same data.
+Import your RA game library with per-game achievement progress displayed on slot cards (`🏆 earned/total (pct%)`). Options:
+
+- **Skip 100% mastered** — don't import games you've fully completed
+- **Skip beaten** — don't import games you've officially beaten
+
+Configure in **Settings → Connections → RetroAchievements**.
 
 ---
 
-## License
+### ⚙ Settings
 
-No license — personal project, use at your own risk.
+| Tab | Options |
+|---|---|
+| **Profile** | Username display, public profile toggle |
+| **Display** | Show/hide individual categories across the whole app |
+| **Queue** | Enable queue mode per category |
+| **Connections** | API keys: IGDB, ComicVine, TMDB, Xbox, RetroAchievements; sync credentials: Simkl, AniList username, MAL username, Steam ID, RA username |
+| **Import/Sync** | Configure which statuses to import from AniList, Simkl, and MAL |
+
+---
+
+### 📊 Stats
+
+The stats bar below the header shows total completions per visible category with episode/chapter counts. The XP bar at the very top tracks your level progress. The full stats screen (accessible via the XP bar) shows per-category breakdowns and total game hours tracked via HLTB.
