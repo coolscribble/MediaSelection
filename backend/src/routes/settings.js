@@ -35,6 +35,7 @@ router.get('/', async (req, res) => {
       tmdb_api_key_set:     Boolean(map.tmdb_api_key),
       tmdb_session_set:     Boolean(map.tmdb_session_id),
       steam_id:             map.steam_id  || '',
+      steam_api_key_set:    Boolean(map.steam_api_key),
       xbox_key_set:         Boolean(map.xbox_xbl_key),
       xbox_gamertag:        map.xbox_gamertag || '',
       ra_username:          map.ra_username || '',
@@ -53,7 +54,7 @@ router.post('/', async (req, res) => {
 
     const scalar = ['simkl_client_id', 'simkl_access_token', 'anilist_username', 'mal_username',
                     'igdb_client_id', 'igdb_client_secret', 'comicvine_api_key',
-                    'tmdb_api_key', 'steam_id', 'xbox_xbl_key', 'xbox_gamertag',
+                    'tmdb_api_key', 'steam_id', 'steam_api_key', 'xbox_xbl_key', 'xbox_gamertag',
                     'ra_username', 'ra_api_key'];
     if (req.body.save_covers_locally !== undefined) {
       await upsert('save_covers_locally', req.body.save_covers_locally ? 'true' : 'false');

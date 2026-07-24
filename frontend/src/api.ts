@@ -150,8 +150,8 @@ export const importCSV = async (category: string, file: File, platforms?: string
   return call(`/api/import/csv/${category}`, { method: 'POST', body: form })
 }
 
-export const importSteam = (steamId: string, sessionCookie: string) =>
-  call('/api/sync/steam', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ steamId, sessionCookie }) })
+export const importSteam = (steamId: string) =>
+  call('/api/sync/steam', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ steamId }) })
 
 export const importXbox = (gamertag: string) =>
   call('/api/sync/xbox', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ gamertag }) })

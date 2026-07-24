@@ -19,7 +19,7 @@ const DEFAULT_SETTINGS: Settings = {
   save_covers_locally: false,
   public_profile: false,
   tmdb_api_key_set: false, tmdb_session_set: false,
-  steam_id: '',
+  steam_id: '', steam_api_key_set: false,
   xbox_key_set: false, xbox_gamertag: '',
   ra_username: '', ra_api_key_set: false, ra_skip_mastered: false, ra_skip_beaten: false,
   hidden_categories: [],
@@ -53,7 +53,8 @@ export default function SettingsModal({ onClose, username }: Props) {
   const [psnMsg, setPsnMsg] = useState('')
   const [psnBusy, setPsnBusy] = useState(false)
   const [steamId, setSteamId] = useState('')
-  const [steamCookie, setSteamCookie] = useState('')
+  const [steamApiKey, setSteamApiKey] = useState('')
+  const [steamApiKeySet, setSteamApiKeySet] = useState(false)
   const [steamMsg, setSteamMsg] = useState('')
   const [steamBusy, setSteamBusy] = useState(false)
   const [xboxKey, setXboxKey] = useState('')
@@ -89,6 +90,7 @@ export default function SettingsModal({ onClose, username }: Props) {
         setSaveCoversLocally(data.save_covers_locally ?? false)
         setPublicProfile(data.public_profile ?? false)
         setSteamId(data.steam_id ?? '')
+        setSteamApiKeySet(data.steam_api_key_set ?? false)
         setXboxGamertag(data.xbox_gamertag ?? '')
         setRaUsername(data.ra_username ?? '')
         setRaSkipMastered(data.ra_skip_mastered ?? false)
@@ -124,6 +126,7 @@ export default function SettingsModal({ onClose, username }: Props) {
         public_profile: publicProfile,
         ...(tmdbApiKey && { tmdb_api_key: tmdbApiKey }),
         steam_id: steamId,
+        ...(steamApiKey && { steam_api_key: steamApiKey }),
         ...(xboxKey && { xbox_xbl_key: xboxKey }),
         xbox_gamertag: xboxGamertag,
         ra_username: raUsername,
@@ -162,12 +165,15 @@ export default function SettingsModal({ onClose, username }: Props) {
 
   const handleSteamImport = async () => {
     if (!steamId.trim()) { setSteamMsg('Enter your Steam username first'); return }
-    if (!steamCookie.trim()) { setSteamMsg('Paste your steamLoginSecure cookie first'); return }
+    if (!steamApiKeySet && !steamApiKey.trim()) { setSteamMsg('Add your Steam Web API key first'); return }
     setSteamBusy(true); setSteamMsg('')
     try {
-      const r = await importSteam(steamId.trim(), steamCookie.trim()) as { added: number; already: number; total: number }
+      if (steamApiKey.trim()) {
+        await saveSettings({ steam_id: steamId, steam_api_key: steamApiKey })
+        setSteamApiKeySet(true); setSteamApiKey('')
+      }
+      const r = await importSteam(steamId.trim()) as { added: number; already: number; total: number }
       setSteamMsg(`✓ Added ${r.added} game${r.added !== 1 ? 's' : ''} — ${r.already} already in library (${r.total} total in Steam)`)
-      setSteamCookie('')
     } catch (e: unknown) { setSteamMsg(e instanceof Error ? e.message : 'Import failed') }
     finally { setSteamBusy(false) }
   }
@@ -439,12 +445,9 @@ export default function SettingsModal({ onClose, username }: Props) {
               <div className="sync-section">
                 <h3>🎮 Steam import</h3>
                 <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
-                  Steam requires a session token to read your library (same idea as PSN's NPSSO).
-                  The token is used once and never stored.
-                </p>
-                <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 10 }}>
-                  <strong>How to get your steamLoginSecure cookie:</strong> Log in at <code>steamcommunity.com</code>,
-                  open DevTools (F12) → Application → Cookies → <code>https://steamcommunity.com</code> → copy the value of <code>steamLoginSecure</code>.
+                  Uses the Steam Web API — no browser DevTools needed. Get your free API key at{' '}
+                  <strong>steamcommunity.com/dev/apikey</strong> (log in, accept the terms, done).
+                  Your games must be set to <strong>Public</strong> in Steam → Privacy Settings → Game Details.
                 </p>
                 <div className="form-group">
                   <label>Steam username or profile URL</label>
@@ -455,12 +458,12 @@ export default function SettingsModal({ onClose, username }: Props) {
                   />
                 </div>
                 <div className="form-group">
-                  <label>steamLoginSecure cookie</label>
+                  <label>Steam Web API key</label>
                   <input
                     type="password"
-                    value={steamCookie}
-                    onChange={e => setSteamCookie(e.target.value)}
-                    placeholder="paste cookie value from browser DevTools"
+                    value={steamApiKey}
+                    onChange={e => setSteamApiKey(e.target.value)}
+                    placeholder={steamApiKeySet ? '••••••••• (saved)' : 'from steamcommunity.com/dev/apikey'}
                   />
                 </div>
                 <div className="sync-row">
@@ -468,7 +471,7 @@ export default function SettingsModal({ onClose, username }: Props) {
                   <button
                     className="btn-secondary"
                     onClick={handleSteamImport}
-                    disabled={steamBusy || !steamId.trim() || !steamCookie.trim()}
+                    disabled={steamBusy || !steamId.trim() || (!steamApiKeySet && !steamApiKey.trim())}
                   >
                     {steamBusy ? '⏳ Importing…' : 'Import Steam library'}
                   </button>

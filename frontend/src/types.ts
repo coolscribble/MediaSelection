@@ -105,6 +105,7 @@ export interface Settings {
   tmdb_api_key_set: boolean
   tmdb_session_set: boolean
   steam_id: string
+  steam_api_key_set: boolean
   xbox_key_set: boolean
   xbox_gamertag: string
   ra_username: string

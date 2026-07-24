@@ -124,11 +124,16 @@ router.post('/psn', async (req, res) => {
 });
 
 router.post('/steam', async (req, res) => {
-  const { steamId, sessionCookie } = req.body || {};
-  if (!steamId?.trim()) return res.status(400).json({ error: 'Steam username or profile URL is required' });
-  if (!sessionCookie?.trim()) return res.status(400).json({ error: 'Steam session cookie is required' });
   try {
-    res.json(await importSteamGames({ userId: req.userId, steamId, sessionCookie }));
+    let steamId = req.body?.steamId?.trim();
+    if (!steamId) {
+      const idRow = await db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [req.userId, 'steam_id']);
+      steamId = idRow?.value?.trim();
+    }
+    if (!steamId) return res.status(400).json({ error: 'Steam username or ID not set. Add it in Settings → Connections.' });
+    const keyRow = await db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [req.userId, 'steam_api_key']);
+    if (!keyRow?.value) return res.status(400).json({ error: 'Steam Web API key not configured. Get yours at steamcommunity.com/dev/apikey and save it in Settings → Connections.' });
+    res.json(await importSteamGames({ userId: req.userId, steamId, apiKey: keyRow.value }));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
