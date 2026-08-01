@@ -12,6 +12,7 @@ import LoginPage from './components/LoginPage'
 import PublicProfilePage from './components/PublicProfilePage'
 import LibraryPage from './components/LibraryPage'
 import CollectionsPage from './components/CollectionsPage'
+import WorldMapPage from './components/WorldMapPage'
 
 const COVER_OPTIONS = [
   { key: 'series', label: '📺 Series (Simkl)',                     cat: 'series' },
@@ -41,7 +42,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [syncOpen, setSyncOpen] = useState(false)
   const [updating, setUpdating] = useState(false)
-  const [page, setPage] = useState<'home' | 'library' | 'collections'>('home')
+  const [page, setPage] = useState<'home' | 'library' | 'collections' | 'worldmap'>('home')
   const [coversOpen, setCoversOpen] = useState(false)
   const [coversSelected, setCoversSelected] = useState<Record<string, boolean>>({ series: true, anime: true, manga: true, games: true, albums: true, comics: true })
   const [coversBusy, setCoversBusy] = useState(false)
@@ -163,6 +164,16 @@ export default function App() {
     )
   }
 
+  if (page === 'worldmap') {
+    return (
+      <>
+        <XPBar statCounts={statCounts} statProgress={statProgress} gameHours={statGameHours} gamesWithHltb={statGamesWithHltb} collectionBonus={statCollectionBonus} />
+        <WorldMapPage onBack={() => setPage('home')} />
+        <ToastContainer />
+      </>
+    )
+  }
+
   return (
     <div>
       <XPBar statCounts={statCounts} statProgress={statProgress} gameHours={statGameHours} gamesWithHltb={statGamesWithHltb} collectionBonus={statCollectionBonus} />
@@ -171,6 +182,7 @@ export default function App() {
         <div className="header-actions">
           <button className="btn-secondary" onClick={() => setPage('library')}>📋 Library</button>
           <button className="btn-secondary" onClick={() => setPage('collections')}>🗂 Collections</button>
+          <button className="btn-secondary" onClick={() => setPage('worldmap')}>🌍 Map</button>
           {/* Covers popup */}
           <div ref={coversRef} style={{ position: 'relative' }}>
             <button

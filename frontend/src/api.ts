@@ -14,6 +14,9 @@ async function call(url: string, opts?: RequestInit) {
   return res.json()
 }
 
+// --- World Map ---
+export const getWorldMap = () => call('/api/worldmap')
+
 // --- Public profile (no auth) ---
 
 export const getPublicProfile = (username: string) =>
