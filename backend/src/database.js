@@ -28,6 +28,12 @@ const db = {
     const stmts = sql.split(';').map(s => s.trim()).filter(Boolean).map(s => ({ sql: s }));
     await client.batch(stmts, 'write');
   },
+  batch: async (stmts) => {
+    const CHUNK = 200;
+    for (let i = 0; i < stmts.length; i += CHUNK) {
+      await client.batch(stmts.slice(i, i + CHUNK), 'write');
+    }
+  },
 };
 
 async function ensureUserSlots(userId) {
@@ -193,6 +199,7 @@ async function init() {
 
   try { await db.run('ALTER TABLE completion_stats ADD COLUMN total_game_hours REAL DEFAULT 0') } catch {}
   try { await db.run('ALTER TABLE completion_stats ADD COLUMN games_with_hltb INTEGER DEFAULT 0') } catch {}
+  try { await db.run('ALTER TABLE library_items ADD COLUMN country_code TEXT') } catch {}
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS collections (
