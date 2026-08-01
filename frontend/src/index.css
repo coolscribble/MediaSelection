@@ -1326,9 +1326,18 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   transition: background 0.1s;
 }
 
-.world-map-country-card:hover {
+.world-map-country-card:hover,
+.world-map-country-card.hovered {
   background: var(--surface2);
   border-color: var(--success);
+}
+
+.world-map-msg {
+  padding: 6px 20px;
+  font-size: 12px;
+  color: var(--success);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
 }
 
 .world-map-country-name {

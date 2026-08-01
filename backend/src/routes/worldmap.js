@@ -20,8 +20,9 @@ router.get('/', async (req, res) => {
     }
 
     const now = Date.now();
+    const fresh = req.query.fresh === 'true' || req.query.fresh === '1';
     const cached = cache.get(req.userId);
-    if (cached && now - cached.fetchedAt < CACHE_TTL) {
+    if (!fresh && cached && now - cached.fetchedAt < CACHE_TTL) {
       return res.json(cached.data);
     }
 

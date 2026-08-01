@@ -15,7 +15,7 @@ async function call(url: string, opts?: RequestInit) {
 }
 
 // --- World Map ---
-export const getWorldMap = () => call('/api/worldmap')
+export const getWorldMap = (fresh = false) => call(`/api/worldmap${fresh ? '?fresh=true' : ''}`)
 
 // --- Public profile (no auth) ---
 
