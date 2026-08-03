@@ -15,7 +15,8 @@ async function call(url: string, opts?: RequestInit) {
 }
 
 // --- World Map ---
-export const getWorldMap = (fresh = false) => call(`/api/worldmap${fresh ? '?fresh=true' : ''}`)
+export const getWorldMap           = (fresh = false) => call(`/api/worldmap${fresh ? '?fresh=true' : ''}`)
+export const syncWorldMapJellyfin  = ()              => call('/api/worldmap?jellyfin=true')
 
 // --- Public profile (no auth) ---
 

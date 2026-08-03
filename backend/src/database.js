@@ -200,6 +200,22 @@ async function init() {
   try { await db.run('ALTER TABLE completion_stats ADD COLUMN total_game_hours REAL DEFAULT 0') } catch {}
   try { await db.run('ALTER TABLE completion_stats ADD COLUMN games_with_hltb INTEGER DEFAULT 0') } catch {}
   try { await db.run('ALTER TABLE library_items ADD COLUMN country_code TEXT') } catch {}
+  try { await db.run('ALTER TABLE users ADD COLUMN jellyfin_token TEXT') } catch {}
+
+  await db.exec(`
+    CREATE TABLE IF NOT EXISTS tmdb_country_cache (
+      tmdb_id   TEXT NOT NULL,
+      tmdb_type TEXT NOT NULL,
+      country_code TEXT,
+      PRIMARY KEY (tmdb_id, tmdb_type)
+    );
+    CREATE TABLE IF NOT EXISTS jf_watched_cache (
+      user_id      TEXT NOT NULL,
+      jf_id        TEXT NOT NULL,
+      country_code TEXT,
+      PRIMARY KEY (user_id, jf_id)
+    )
+  `);
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS collections (

@@ -86,13 +86,14 @@ router.post('/login', loginLimiter, async (req, res) => {
     if (!r.ok) return res.status(502).json({ error: 'Jellyfin server returned an error' });
 
     const data = await r.json();
-    const displayName = data.User?.Name || username;
-    const jellyfinId = data.User?.Id || null;
-    const userId = displayName.toLowerCase();
+    const displayName    = data.User?.Name || username;
+    const jellyfinId     = data.User?.Id || null;
+    const jellyfinToken  = data.AccessToken || null;
+    const userId         = displayName.toLowerCase();
 
     await db.run(
-      'INSERT OR REPLACE INTO users (username, server_url, jellyfin_id) VALUES (?, ?, ?)',
-      [userId, base, jellyfinId]
+      'INSERT OR REPLACE INTO users (username, server_url, jellyfin_id, jellyfin_token) VALUES (?, ?, ?, ?)',
+      [userId, base, jellyfinId, jellyfinToken]
     );
     await ensureUserSlots(userId);
 

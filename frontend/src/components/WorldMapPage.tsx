@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { ComposableMap, Geographies, Geography } from 'react-simple-maps'
-import { getWorldMap, syncSimkl } from '../api'
+import { getWorldMap, syncSimkl, syncWorldMapJellyfin } from '../api'
 import { ISO_NUMERIC_TO_A2, COUNTRY_NAMES } from './countryData'
 
 interface CountryData {
@@ -24,7 +24,7 @@ const BASE_ROTATE: [number, number, number] = [-10, 0, 0]
 export default function WorldMapPage({ onBack }: Props) {
   const [countries,   setCountries]  = useState<Record<string, CountryData>>({})
   const [mapLoading,  setMapLoading] = useState(true)
-  const [syncing,     setSyncing]    = useState(false)
+  const [syncing,     setSyncing]    = useState<'simkl'|'jellyfin'|false>(false)
   const [error,       setError]      = useState('')
   const [msg,         setMsg]        = useState('')
   const [hoveredCode, setHoveredCode]= useState<string | null>(null)
@@ -52,7 +52,7 @@ export default function WorldMapPage({ onBack }: Props) {
   useEffect(() => { loadMap() }, [])
 
   const handleSyncSimkl = async () => {
-    setSyncing(true)
+    setSyncing('simkl')
     setMsg('')
     setError('')
     try {
@@ -61,6 +61,22 @@ export default function WorldMapPage({ onBack }: Props) {
       loadMap(true)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Sync failed')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const handleSyncJellyfin = async () => {
+    setSyncing('jellyfin')
+    setMsg('')
+    setError('')
+    try {
+      const d = await syncWorldMapJellyfin() as { countries: Record<string, CountryData> }
+      setCountries(d.countries)
+      setMsg('Jellyfin synced!')
+      setMapLoading(false)
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Jellyfin sync failed')
     } finally {
       setSyncing(false)
     }
@@ -119,10 +135,18 @@ export default function WorldMapPage({ onBack }: Props) {
         <button
           className="btn-secondary"
           onClick={handleSyncSimkl}
-          disabled={syncing || mapLoading}
+          disabled={syncing !== false || mapLoading}
           title="Fetch from Simkl and look up country data"
         >
-          {syncing ? '…' : '⟳ Sync from Simkl'}
+          {syncing === 'simkl' ? '…' : '⟳ Sync from Simkl'}
+        </button>
+        <button
+          className="btn-secondary"
+          onClick={handleSyncJellyfin}
+          disabled={syncing !== false || mapLoading}
+          title="Import watched items from Jellyfin"
+        >
+          {syncing === 'jellyfin' ? '…' : '⟳ Sync from Jellyfin'}
         </button>
         <div className="world-map-zoom-btns">
           <button className="btn-ghost btn-icon" title="Zoom in"  onClick={() => setMapScale(s => Math.min(s * 1.5, 900))}>+</button>
@@ -146,7 +170,7 @@ export default function WorldMapPage({ onBack }: Props) {
         {!mapLoading && error && <div className="world-map-error">{error}</div>}
         {!mapLoading && !error && watchedCount === 0 && (
           <div className="world-map-empty">
-            No country data yet — press "Sync from Simkl" to load.
+            No country data yet — press "Sync from Simkl" or "Sync from Jellyfin" to load.
           </div>
         )}
         {!mapLoading && !error && (
