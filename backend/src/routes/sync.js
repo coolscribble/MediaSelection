@@ -8,6 +8,7 @@ const { syncIGDB } = require('../services/igdb');
 const { syncAOTY } = require('../services/aoty');
 const { syncComicVine } = require('../services/comicvine');
 const { syncGoogleBooks } = require('../services/googlebooks');
+const { importJellyfinLibrary } = require('../services/jellyfin');
 const { importPSNGames } = require('../services/psn');
 const { importSteamGames } = require('../services/steam');
 const { importXboxGames } = require('../services/xbox');
@@ -48,6 +49,11 @@ router.get('/simkl/pin/:usercode', async (req, res) => {
 
 router.post('/simkl', async (req, res) => {
   try { res.json(await syncSimkl(req.userId)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+router.post('/jellyfin', async (req, res) => {
+  try { res.json(await importJellyfinLibrary(req.userId)); }
   catch (e) { res.status(500).json({ error: e.message }); }
 });
 

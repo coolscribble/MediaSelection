@@ -266,8 +266,8 @@ export default function App() {
         For any questions feel free to DM Cipra on Discord
       </footer>
 
-      {settingsOpen && <SettingsModal onClose={() => { setSettingsOpen(false); refresh() }} username={user.username} />}
-      {syncOpen    && <SyncModal     onClose={() => { setSyncOpen(false);    refresh() }} />}
+      {settingsOpen && <SettingsModal onClose={() => { setSettingsOpen(false); refresh() }} username={user.username} serverUrl={user.server_url || undefined} />}
+      {syncOpen    && <SyncModal     onClose={() => { setSyncOpen(false);    refresh() }} serverUrl={user.server_url || undefined} />}
       <ToastContainer />
     </div>
   )

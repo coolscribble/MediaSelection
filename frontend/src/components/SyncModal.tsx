@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { syncAniList, syncSimkl, syncMAL } from '../api'
+import { syncAniList, syncSimkl, syncMAL, importJellyfin } from '../api'
 import { toast, dismiss } from '../notifications'
 
-interface Props { onClose: () => void }
+interface Props { onClose: () => void; serverUrl?: string }
 
-export default function SyncModal({ onClose }: Props) {
+export default function SyncModal({ onClose, serverUrl }: Props) {
   const [busy, setBusy] = useState<string | null>(null)
   const [results, setResults] = useState<Record<string, string>>({})
 
@@ -65,6 +65,26 @@ export default function SyncModal({ onClose }: Props) {
               )}
             </div>
           </div>
+
+          {serverUrl && (
+            <div className="sync-section">
+              <h3>🎬 Jellyfin — Movies + Series + Anime</h3>
+              <p style={{ fontSize: 12, color: 'var(--text2)', marginBottom: 8 }}>
+                Imports everything in your Jellyfin library. Series with an "Anime" genre tag go into the Anime category.
+                Items already in your library (matched by TMDB ID) are skipped.
+              </p>
+              <div className="sync-row">
+                <button className="btn-primary" disabled={busy !== null} onClick={() => doSync('jellyfin', 'Jellyfin', importJellyfin)}>
+                  {busy === 'jellyfin' ? '…' : '⟳ Import'}
+                </button>
+                {results.jellyfin && (
+                  <span className={`sync-status${results.jellyfin.startsWith('✓') ? ' ok' : ' err'}`}>
+                    {results.jellyfin}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="sync-section">
             <h3>🎌 MyAnimeList — Anime + Manga</h3>

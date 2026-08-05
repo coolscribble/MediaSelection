@@ -6,7 +6,7 @@ import {
   MAL_ANIME_STATE_OPTIONS, MAL_MANGA_STATE_OPTIONS,
 } from '../types'
 
-interface Props { onClose: () => void; username: string }
+interface Props { onClose: () => void; username: string; serverUrl?: string }
 
 const DEFAULT_SETTINGS: Settings = {
   simkl_client_id: '', simkl_token_set: false,
@@ -25,7 +25,7 @@ const DEFAULT_SETTINGS: Settings = {
   hidden_categories: [],
 }
 
-export default function SettingsModal({ onClose, username }: Props) {
+export default function SettingsModal({ onClose, username, serverUrl }: Props) {
   const [tab, setTab] = useState<'connections' | 'states' | 'queue' | 'display' | 'profile'>('connections')
   const [s, setS] = useState<Settings>(DEFAULT_SETTINGS)
   const [clientId, setClientId] = useState('')
@@ -272,6 +272,22 @@ export default function SettingsModal({ onClose, username }: Props) {
 
           {tab === 'connections' && (
             <>
+              {serverUrl && (
+                <div className="sync-section">
+                  <h3>🎬 Jellyfin</h3>
+                  <div className="sync-row" style={{ marginBottom: 8 }}>
+                    <span className="sync-status ok">✓ Connected</span>
+                    <code style={{ fontSize: 12, background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 6, padding: '4px 8px', wordBreak: 'break-all' }}>
+                      {serverUrl}
+                    </code>
+                  </div>
+                  <p style={{ fontSize: 12, color: 'var(--text2)', margin: '0 0 8px' }}>
+                    Your Jellyfin session is active. Use <strong>⟳ Sync → Jellyfin</strong> to import your full library into MediaPicker.
+                    Series with an "Anime" genre tag are automatically placed in the Anime category.
+                  </p>
+                </div>
+              )}
+
               <div className="sync-section">
                 <h3>⛩️ AniList (Anime + Manga)</h3>
                 <div className="form-group">
