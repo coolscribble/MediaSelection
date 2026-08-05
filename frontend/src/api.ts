@@ -85,7 +85,9 @@ export const loginLocal = (passcode?: string) =>
 export const getMe = () =>
   fetch('/api/auth/me', { credentials: 'include' }).then(async res => {
     if (!res.ok) throw new Error('Not authenticated')
-    return res.json()
+    const d = await res.json()
+    // API returns serverUrl (camelCase); normalize to snake_case for User type
+    return { ...d, server_url: d.server_url || d.serverUrl || '' }
   })
 
 export const logout = () => call('/api/auth/logout', { method: 'POST' })
