@@ -7,6 +7,22 @@ const { db } = require('../database');
 // List all collections with item count + completion
 router.get('/', async (req, res) => {
   try {
+    // Auto-mark collection items as completed when their linked library item
+    // already has status='completed' in its metadata (e.g. from a Simkl sync
+    // that included the 'completed' status).  Runs fast — uses the existing
+    // user indexes and only touches rows where completed_at is still NULL.
+    await db.run(`
+      UPDATE collection_items
+      SET completed_at = CURRENT_TIMESTAMP
+      WHERE completed_at IS NULL
+      AND library_item_id IN (
+        SELECT id FROM library_items
+        WHERE user_id = ?
+        AND json_extract(metadata, '$.status') = 'completed'
+      )
+      AND collection_id IN (SELECT id FROM collections WHERE user_id = ?)
+    `, [req.userId, req.userId]);
+
     const cols = await db.all(
       'SELECT id, name, category, cover_url, external_id, franchise_total, created_at FROM collections WHERE user_id = ? ORDER BY created_at DESC',
       [req.userId]
@@ -368,9 +384,10 @@ async function applyWatchedToCollections(userId) {
   // All non-completed collection items for this user, with their library link
   const colItems = await db.all(`
     SELECT ci.id, ci.tmdb_id, ci.library_item_id,
-           li.external_id AS lib_ext_id,
-           li.category    AS lib_cat,
-           li.source      AS lib_source
+           li.external_id                          AS lib_ext_id,
+           li.category                             AS lib_cat,
+           li.source                               AS lib_source,
+           json_extract(li.metadata, '$.status')   AS lib_status
     FROM collection_items ci
     JOIN collections c ON c.id = ci.collection_id
     LEFT JOIN library_items li ON li.id = ci.library_item_id
@@ -379,6 +396,11 @@ async function applyWatchedToCollections(userId) {
 
   const toUpdate = new Set();
   for (const ci of colItems) {
+    // 0. Library item is already marked completed in its own metadata
+    if (ci.lib_status === 'completed') {
+      toUpdate.add(ci.id);
+      continue;
+    }
     // 1. Match by TMDB ID on the collection item (most reliable — movies always have this)
     if (ci.tmdb_id && watchedTmdb.has(Number(ci.tmdb_id))) {
       toUpdate.add(ci.id);
@@ -549,6 +571,208 @@ router.get('/sync-watched/anilist', async (req, res) => {
         ? `${totalFetched} items saved. No new collection entries to mark.`
         : `${totalFetched} items saved. ${updated} collection entr${updated === 1 ? 'y' : 'ies'} marked as watched!`,
       pct: 100, done: true, result: { fetched: totalFetched, updated },
+    });
+    res.end();
+  } catch (e) {
+    send({ step: `Error: ${e.message}`, pct: 100, done: true, error: true });
+    res.end();
+  }
+});
+
+// ── Auto-detect movie collections (SSE) ───────────────────────────────────────
+
+router.get('/auto-detect/movies', async (req, res) => {
+  const send = sseSetup(res);
+  try {
+    const keyRow = await db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [req.userId, 'tmdb_api_key']);
+    if (!keyRow?.value) {
+      send({ step: 'TMDB API key not configured. Add it in Settings → Connections.', pct: 100, done: true, error: true });
+      return res.end();
+    }
+    const apiKey = keyRow.value;
+
+    const movies = await db.all(
+      "SELECT id, title, thumbnail_url, metadata FROM library_items WHERE user_id = ? AND category = 'movies'",
+      [req.userId]
+    );
+    const withTmdb = movies.filter(m => { try { return !!JSON.parse(m.metadata || '{}').tmdb_id; } catch { return false; } });
+
+    if (!withTmdb.length) {
+      send({ step: 'No movies with TMDB IDs found in your library.', pct: 100, done: true, result: { created: 0, checked: 0 } });
+      return res.end();
+    }
+
+    send({ step: `Checking ${withTmdb.length} movies for franchise membership…`, pct: 2 });
+
+    const groups = new Map();
+    for (let i = 0; i < withTmdb.length; i++) {
+      const movie = withTmdb[i];
+      const pct = Math.round(2 + (i / withTmdb.length) * 65);
+      send({ step: `Checking ${i + 1}/${withTmdb.length}: ${movie.title}`, pct });
+      const meta = JSON.parse(movie.metadata || '{}');
+      if (i > 0) await new Promise(r => setTimeout(r, 300));
+      try {
+        const r = await fetch(`https://api.themoviedb.org/3/movie/${meta.tmdb_id}?api_key=${encodeURIComponent(apiKey)}`);
+        if (!r.ok) continue;
+        const data = await r.json();
+        const col = data.belongs_to_collection;
+        if (!col) continue;
+        if (!groups.has(col.id)) groups.set(col.id, { name: col.name, poster: col.poster_path ? `https://image.tmdb.org/t/p/w300${col.poster_path}` : null, movies: [] });
+        groups.get(col.id).movies.push(movie);
+      } catch { continue; }
+    }
+
+    send({ step: `Found ${groups.size} franchise group(s). Creating collections…`, pct: 70 });
+
+    let created = 0, i = 0;
+    for (const [colId, group] of groups) {
+      i++;
+      if (group.movies.length < 2) continue;
+      const existing = await db.get('SELECT id FROM collections WHERE user_id = ? AND external_id = ?', [req.userId, String(colId)]);
+      if (existing) continue;
+
+      send({ step: `Creating: ${group.name} (${i}/${groups.size})`, pct: 70 + Math.round((i / groups.size) * 20) });
+
+      let franchiseTotal = null;
+      try {
+        const fr = await fetch(`https://api.themoviedb.org/3/collection/${colId}?api_key=${encodeURIComponent(apiKey)}`);
+        if (fr.ok) franchiseTotal = ((await fr.json()).parts || []).length;
+      } catch { /* non-fatal */ }
+
+      const col = await db.run(
+        'INSERT INTO collections (user_id, name, category, cover_url, external_id, franchise_total) VALUES (?, ?, ?, ?, ?, ?)',
+        [req.userId, group.name, 'movies', group.poster, String(colId), franchiseTotal]
+      );
+      for (const movie of group.movies) {
+        const tmdbId = (() => { try { return JSON.parse(movie.metadata || '{}').tmdb_id || null; } catch { return null; } })();
+        await db.run(
+          'INSERT INTO collection_items (collection_id, library_item_id, title, thumbnail_url, tmdb_id) VALUES (?, ?, ?, ?, ?)',
+          [col.lastInsertRowid, movie.id, movie.title, movie.thumbnail_url, tmdbId]
+        );
+      }
+      created++;
+    }
+
+    send({
+      step: created === 0
+        ? `Checked ${withTmdb.length} movies — all franchises already in your collections.`
+        : `Done! Created ${created} new collection(s) from ${withTmdb.length} movies.`,
+      pct: 100, done: true, result: { created, checked: withTmdb.length, groups: groups.size },
+    });
+    res.end();
+  } catch (e) {
+    send({ step: `Error: ${e.message}`, pct: 100, done: true, error: true });
+    res.end();
+  }
+});
+
+// ── Auto-detect anime collections (SSE) ──────────────────────────────────────
+
+router.get('/auto-detect/anime', async (req, res) => {
+  const send = sseSetup(res);
+  try {
+    const animeItems = await db.all(
+      "SELECT id, title, external_id, thumbnail_url FROM library_items WHERE user_id = ? AND category = 'anime' AND external_id IS NOT NULL",
+      [req.userId]
+    );
+    if (!animeItems.length) {
+      send({ step: 'No anime with AniList IDs found in your library.', pct: 100, done: true, result: { created: 0, checked: 0 } });
+      return res.end();
+    }
+
+    const idMap = new Map();
+    for (const item of animeItems) {
+      const n = parseInt(item.external_id, 10);
+      if (!isNaN(n) && n > 0) idMap.set(n, item);
+    }
+    const ids = [...idMap.keys()];
+    const BATCH = 10;
+    const totalBatches = Math.ceil(ids.length / BATCH);
+    const adjacency = new Map();
+
+    for (let i = 0; i < ids.length; i += BATCH) {
+      const batchNum = Math.floor(i / BATCH) + 1;
+      send({ step: `Fetching AniList relations: batch ${batchNum}/${totalBatches}`, pct: Math.round(5 + (batchNum / totalBatches) * 55) });
+      const batch = ids.slice(i, i + BATCH);
+      const query = `{\n${batch.map(id =>
+        `a${id}: Media(id: ${id}, type: ANIME) { id relations { edges { relationType(version: 2) node { id type } } } }`
+      ).join('\n')}\n}`;
+      try {
+        const resp = await fetch('https://graphql.anilist.co', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ query }),
+        });
+        const json = await resp.json();
+        for (const id of batch) {
+          const media = json?.data?.[`a${id}`];
+          if (!media) continue;
+          const related = new Set();
+          for (const edge of (media.relations?.edges || [])) {
+            if (!['SEQUEL', 'PREQUEL', 'PARENT', 'SIDE_STORY'].includes(edge.relationType)) continue;
+            if (edge.node?.type !== 'ANIME') continue;
+            if (idMap.has(edge.node.id)) related.add(edge.node.id);
+          }
+          if (related.size > 0) adjacency.set(id, related);
+        }
+      } catch { /* skip batch */ }
+      if (i + BATCH < ids.length) await new Promise(r => setTimeout(r, 800));
+    }
+
+    send({ step: 'Building franchise groups…', pct: 65 });
+    const visited = new Set();
+    const components = [];
+    for (const id of ids) {
+      if (visited.has(id)) continue;
+      const component = [];
+      const queue = [id];
+      while (queue.length) {
+        const curr = queue.shift();
+        if (visited.has(curr)) continue;
+        visited.add(curr);
+        component.push(curr);
+        for (const neighbor of (adjacency.get(curr) || [])) {
+          if (!visited.has(neighbor)) queue.push(neighbor);
+        }
+      }
+      if (component.length >= 2) components.push(component);
+    }
+
+    send({ step: `Found ${components.length} franchise group(s). Creating collections…`, pct: 70 });
+
+    let created = 0;
+    for (let ci = 0; ci < components.length; ci++) {
+      const component = components[ci];
+      send({ step: `Processing group ${ci + 1}/${components.length}…`, pct: 70 + Math.round((ci / components.length) * 25) });
+      const items = component.map(id => idMap.get(id)).filter(Boolean);
+      const placeholders = items.map(() => '?').join(',');
+      const alreadyIn = await db.get(
+        `SELECT ci.id FROM collection_items ci JOIN collections c ON c.id = ci.collection_id WHERE c.user_id = ? AND c.category = 'anime' AND ci.library_item_id IN (${placeholders}) LIMIT 1`,
+        [req.userId, ...items.map(i => i.id)]
+      );
+      if (alreadyIn) continue;
+
+      const root = items.reduce((a, b) => (Number(a.external_id) < Number(b.external_id) ? a : b));
+      const name = root.title.replace(/\s+(Season\s+\d+|Part\s+\d+|\d+(st|nd|rd|th)\s+Season)\s*.*$/i, '').trim() || root.title;
+
+      const colRow = await db.run(
+        "INSERT INTO collections (user_id, name, category, cover_url) VALUES (?, ?, 'anime', ?)",
+        [req.userId, name, root.thumbnail_url]
+      );
+      for (const item of items) {
+        await db.run(
+          'INSERT INTO collection_items (collection_id, library_item_id, title, thumbnail_url) VALUES (?, ?, ?, ?)',
+          [colRow.lastInsertRowid, item.id, item.title, item.thumbnail_url]
+        );
+      }
+      created++;
+    }
+
+    send({
+      step: created === 0
+        ? `Checked ${ids.length} anime — all franchises already in your collections.`
+        : `Done! Created ${created} new collection(s) from ${ids.length} anime.`,
+      pct: 100, done: true, result: { created, checked: ids.length, components: components.length },
     });
     res.end();
   } catch (e) {

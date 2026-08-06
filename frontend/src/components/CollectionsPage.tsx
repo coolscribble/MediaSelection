@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getCollections, createCollection, deleteCollection, addCollectionItem, removeCollectionItem, autoDetectCollections, autoDetectAnimeCollections, getLibrary, getCollectionMissing } from '../api'
+import { getCollections, createCollection, deleteCollection, addCollectionItem, removeCollectionItem, getLibrary, getCollectionMissing } from '../api'
 import { toast } from '../notifications'
 
 const CATEGORIES = ['movies', 'series', 'anime', 'manga', 'games', 'comics', 'albums']
@@ -61,11 +61,9 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
   const [addingItem, setAddingItem] = useState(false)
   const [libraryItems, setLibraryItems] = useState<{ id: number; title: string; thumbnail_url: string | null }[]>([])
   const [itemSearch, setItemSearch] = useState('')
-  const [detecting, setDetecting] = useState(false)
-  const [detectingAnime, setDetectingAnime] = useState(false)
   const [missing, setMissing] = useState<MissingMovie[]>([])
   const [missingLoading, setMissingLoading] = useState(false)
-  const [syncProgress, setSyncProgress] = useState<{ step: string; pct: number; source: string } | null>(null)
+  const [activeJob, setActiveJob] = useState<{ type: string; step: string; pct: number } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -145,58 +143,44 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
     } finally { setBusy(false) }
   }
 
-  const handleAutoDetect = async () => {
-    setDetecting(true)
-    try {
-      const r = await autoDetectCollections() as { created: number; checked: number; groups: number }
-      await load()
-      onRefresh()
-      toast(`Auto-detect: ${r.created} new collection(s) from ${r.checked} movies`, 'success')
-    } catch (e: unknown) {
-      toast(e instanceof Error ? e.message : 'Auto-detect failed', 'error')
-    } finally { setDetecting(false) }
-  }
-
-  const handleAutoDetectAnime = async () => {
-    setDetectingAnime(true)
-    try {
-      const r = await autoDetectAnimeCollections() as { created: number; checked: number; components: number }
-      await load()
-      onRefresh()
-      toast(`Anime auto-detect: ${r.created} new collection(s) from ${r.checked} anime (${r.components} franchise groups found)`, 'success')
-    } catch (e: unknown) {
-      toast(e instanceof Error ? e.message : 'Anime auto-detect failed', 'error')
-    } finally { setDetectingAnime(false) }
-  }
-
-  const startSync = (source: 'simkl' | 'anilist') => {
-    if (syncProgress) return
-    setSyncProgress({ step: 'Connecting…', pct: 0, source })
-    const es = new EventSource(`/api/collections/sync-watched/${source}`, { withCredentials: true })
+  const runJob = (type: string, url: string, onDone: (result: Record<string, number>) => string) => {
+    if (activeJob) return
+    setActiveJob({ type, step: 'Connecting…', pct: 0 })
+    const es = new EventSource(url, { withCredentials: true })
     es.onmessage = (e) => {
       try {
-        const data = JSON.parse(e.data) as { step?: string; pct?: number; done?: boolean; error?: boolean; result?: { fetched: number; updated: number } }
-        setSyncProgress({ step: data.step || 'Working…', pct: data.pct ?? 50, source })
+        const data = JSON.parse(e.data) as { step?: string; pct?: number; done?: boolean; error?: boolean; result?: Record<string, number> }
+        setActiveJob({ type, step: data.step || 'Working…', pct: data.pct ?? 50 })
         if (data.done) {
           es.close()
           setTimeout(() => {
-            setSyncProgress(null)
+            setActiveJob(null)
             load()
-            if (data.error) toast(data.step || 'Sync failed', 'error')
-            else {
-              const r = data.result
-              toast(r ? `${source === 'simkl' ? 'Simkl' : 'AniList'}: ${r.fetched} items saved, ${r.updated} collection entr${r.updated === 1 ? 'y' : 'ies'} marked as watched` : 'Sync complete', 'success')
-            }
+            onRefresh()
+            if (data.error) toast(data.step || 'Operation failed', 'error')
+            else toast(data.result ? onDone(data.result) : 'Done', 'success')
           }, 1200)
         }
       } catch { /* ignore */ }
     }
     es.onerror = () => {
       es.close()
-      setSyncProgress(null)
-      toast(`${source === 'simkl' ? 'Simkl' : 'AniList'} sync failed — check Settings → Connections`, 'error')
+      setActiveJob(null)
+      toast(`${type} failed — check Settings → Connections`, 'error')
     }
   }
+
+  const handleAutoDetect      = () => runJob('Auto-detect Movies', '/api/collections/auto-detect/movies',
+    r => `Auto-detect: ${r.created} new collection(s) from ${r.checked} movies`)
+  const handleAutoDetectAnime = () => runJob('Auto-detect Anime',  '/api/collections/auto-detect/anime',
+    r => `Anime auto-detect: ${r.created} new collection(s), ${r.components} franchise groups`)
+
+  const startSync = (source: 'simkl' | 'anilist') =>
+    runJob(
+      source === 'simkl' ? 'Sync Simkl' : 'Sync AniList',
+      `/api/collections/sync-watched/${source}`,
+      r => `${source === 'simkl' ? 'Simkl' : 'AniList'}: ${r.fetched} items saved, ${r.updated} collection entr${r.updated === 1 ? 'y' : 'ies'} marked as watched`
+    )
 
   const displayed =
     catFilter === 'finished'     ? collections.filter(c => completionOf(c).complete)
@@ -212,7 +196,10 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
   }
 
   function bonusXp(col: Collection) {
-    return col.items.length * (COLLECTION_BONUS_PER_ENTRY[col.category] || 10)
+    // Use the full franchise size (denom) so the bonus reflects all franchise entries,
+    // not just items currently in the collection / still in the library.
+    const { denom } = completionOf(col)
+    return denom * (COLLECTION_BONUS_PER_ENTRY[col.category] || 10)
   }
 
   const openCollection = (col: Collection) => {
@@ -247,36 +234,36 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
         <button className="btn-ghost" onClick={onBack}>← Back</button>
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>🗂 Collections</h2>
         <div style={{ flex: 1 }} />
-        <button className="btn-ghost" onClick={() => startSync('simkl')} disabled={!!syncProgress}
-          title="Fetch completed movies, TV shows & anime from Simkl and save to watched database">
-          {syncProgress?.source === 'simkl' ? '⏳ Syncing…' : '🔄 Sync Simkl'}
+        <button className="btn-ghost" onClick={() => startSync('simkl')} disabled={!!activeJob}
+          title="Fetch all completed movies, TV shows & anime from Simkl and save to watched database">
+          {activeJob?.type === 'Sync Simkl' ? '⏳ Syncing…' : '🔄 Sync Simkl'}
         </button>
-        <button className="btn-ghost" onClick={() => startSync('anilist')} disabled={!!syncProgress}
-          title="Fetch completed anime & manga from AniList and save to watched database">
-          {syncProgress?.source === 'anilist' ? '⏳ Syncing…' : '🔄 Sync AniList'}
+        <button className="btn-ghost" onClick={() => startSync('anilist')} disabled={!!activeJob}
+          title="Fetch all completed anime & manga from AniList and save to watched database">
+          {activeJob?.type === 'Sync AniList' ? '⏳ Syncing…' : '🔄 Sync AniList'}
         </button>
-        <button className="btn-ghost" onClick={handleAutoDetectAnime} disabled={detectingAnime} title="Group anime seasons/sequels via AniList relations">
-          {detectingAnime ? '…' : '⛩ Auto-detect Anime'}
+        <button className="btn-ghost" onClick={handleAutoDetectAnime} disabled={!!activeJob} title="Group anime seasons/sequels via AniList relations">
+          {activeJob?.type === 'Auto-detect Anime' ? '⏳ Working…' : '⛩ Auto-detect Anime'}
         </button>
-        <button className="btn-ghost" onClick={handleAutoDetect} disabled={detecting} title="Detect movie franchises via TMDB">
-          {detecting ? '…' : '🎬 Auto-detect Movies'}
+        <button className="btn-ghost" onClick={handleAutoDetect} disabled={!!activeJob} title="Detect movie franchises via TMDB">
+          {activeJob?.type === 'Auto-detect Movies' ? '⏳ Working…' : '🎬 Auto-detect Movies'}
         </button>
         <button className="btn-primary" onClick={() => setCreating(true)}>+ New Collection</button>
       </div>
 
       {/* Sync progress bar */}
-      {syncProgress && (
+      {activeJob && (
         <div style={{ padding: '8px 20px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 12, color: 'var(--text2)' }}>
-            <span><strong>{syncProgress.source === 'simkl' ? 'Simkl' : 'AniList'}</strong> — {syncProgress.step}</span>
-            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{syncProgress.pct}%</span>
+            <span><strong>{activeJob.type}</strong> — {activeJob.step}</span>
+            <span style={{ fontVariantNumeric: 'tabular-nums' }}>{activeJob.pct}%</span>
           </div>
           <div style={{ height: 5, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
             <div style={{
               height: '100%',
-              width: `${syncProgress.pct}%`,
+              width: `${activeJob.pct}%`,
               borderRadius: 3,
-              background: syncProgress.pct === 100 ? '#27ae60' : 'var(--accent)',
+              background: activeJob.pct === 100 ? '#27ae60' : 'var(--accent)',
               transition: 'width 0.6s ease, background 0.4s',
             }} />
           </div>
