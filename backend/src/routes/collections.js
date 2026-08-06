@@ -174,7 +174,12 @@ router.get('/:id/missing', async (req, res) => {
       })
       .sort((a, b) => (a.release_date || '').localeCompare(b.release_date || ''));
 
-    res.json({ missing, franchise_total: franchiseTotal });
+    // Count franchise films that are finished but not yet in this collection.
+    // The frontend adds this to the collection_items done-count so the progress
+    // bar reflects reality even for movies watched before they were added to the collection.
+    const watchedOutside = missing.filter(m => m.finished).length;
+
+    res.json({ missing, franchise_total: franchiseTotal, watched_outside: watchedOutside });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -31,6 +31,7 @@ interface Collection {
   cover_url: string | null
   external_id: string | null
   franchise_total: number | null
+  watched_outside: number   // franchise films finished in watched_items but not in collection_items
   items: CollectionItem[]
 }
 
@@ -193,7 +194,10 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
 
   function completionOf(col: Collection) {
     const inCol   = col.items.length
-    const done    = col.items.filter(i => i.completed_at).length
+    const doneInCol = col.items.filter(i => i.completed_at).length
+    // watched_outside: franchise films watched (in watched_items) but not yet added to this collection.
+    // Populated when the missing-movies panel loads; starts at 0 for collections never opened.
+    const done    = doneInCol + (col.watched_outside ?? 0)
     const denom   = col.franchise_total ?? inCol   // use full franchise count when known
     return { inCol, done, denom, complete: denom >= 2 && done >= denom, pct: denom > 0 ? done / denom : 0 }
   }
@@ -213,15 +217,19 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
       setMissingLoading(true)
       getCollectionMissing(col.id)
         .then((d: unknown) => {
-          const resp = d as { missing: MissingMovie[]; franchise_total?: number }
+          const resp = d as { missing: MissingMovie[]; franchise_total?: number; watched_outside?: number }
           setMissing(resp.missing || [])
-          // Patch franchise_total onto both selected and collection list
-          if (resp.franchise_total != null) {
-            const patch = (c: Collection) =>
-              c.id === col.id ? { ...c, franchise_total: resp.franchise_total! } : c
-            setCollections(prev => prev.map(patch))
-            setSelected(prev => prev ? patch(prev) : prev)
-          }
+          // Patch franchise_total and watched_outside onto both selected and the collection list.
+          // watched_outside counts franchise films finished in watched_items but not in collection_items,
+          // so the progress bar reflects movies watched before they were added to the collection.
+          const patch = (c: Collection) =>
+            c.id === col.id ? {
+              ...c,
+              ...(resp.franchise_total  != null ? { franchise_total:  resp.franchise_total  } : {}),
+              ...(resp.watched_outside  != null ? { watched_outside:  resp.watched_outside  } : {}),
+            } : c
+          setCollections(prev => prev.map(patch))
+          setSelected(prev => prev ? patch(prev) : prev)
         })
         .catch(() => setMissing([]))
         .finally(() => setMissingLoading(false))
