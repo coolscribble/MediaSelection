@@ -3,6 +3,7 @@
 const express = require('express');
 const router = express.Router();
 const { db } = require('../database');
+const { getWatchedItems } = require('../services/jellyfin');
 
 // List all collections with item count + completion
 router.get('/', async (req, res) => {
@@ -590,6 +591,78 @@ router.get('/sync-watched/anilist', async (req, res) => {
     }
 
     send({ step: `${totalFetched} watched items saved. Updating collection entries…`, pct: 80 });
+    const updated = await autoApplyCompletions(req.userId);
+
+    send({
+      step: updated === 0
+        ? `${totalFetched} items saved. No new collection entries to mark.`
+        : `${totalFetched} items saved. ${updated} collection entr${updated === 1 ? 'y' : 'ies'} marked as watched!`,
+      pct: 100, done: true, result: { fetched: totalFetched, updated },
+    });
+    res.end();
+  } catch (e) {
+    send({ step: `Error: ${e.message}`, pct: 100, done: true, error: true });
+    res.end();
+  }
+});
+
+// ── Sync from Jellyfin ────────────────────────────────────────────────────────
+// Fetches all items marked as played (IsPlayed=true) in Jellyfin, stores their
+// TMDB IDs in watched_items, then runs autoApplyCompletions.
+// This covers items that were watched in Jellyfin but not tracked on Simkl.
+
+router.get('/sync-watched/jellyfin', async (req, res) => {
+  const send = sseSetup(res);
+  try {
+    const userRow = await db.get(
+      'SELECT server_url, jellyfin_id, jellyfin_token FROM users WHERE username = ?',
+      [req.userId]
+    );
+    if (!userRow?.server_url || !userRow?.jellyfin_token) {
+      send({
+        step: !userRow?.server_url
+          ? 'This account is not linked to a Jellyfin server. Log in with Jellyfin or connect one in Settings.'
+          : 'Jellyfin token missing — please log out and back in to refresh it.',
+        pct: 100, done: true, error: true,
+      });
+      return res.end();
+    }
+
+    send({ step: 'Fetching played items from Jellyfin…', pct: 10 });
+
+    let items;
+    try {
+      items = await getWatchedItems(userRow.server_url, userRow.jellyfin_id, userRow.jellyfin_token);
+    } catch (e) {
+      send({ step: `Jellyfin error: ${e.message}`, pct: 100, done: true, error: true });
+      return res.end();
+    }
+
+    send({ step: `Found ${items.length} played items. Saving to database…`, pct: 30 });
+
+    let totalFetched = 0;
+    for (const item of items) {
+      if (item.Type !== 'Movie' && item.Type !== 'Series') continue;
+      const genres  = item.Genres || [];
+      const isAnime = genres.some(g => g.toLowerCase() === 'anime');
+      const category = item.Type === 'Movie' ? 'movies' : isAnime ? 'anime' : 'series';
+
+      // Use the same jf:{Id} external_id format as library_items so Step 4 join works
+      const externalId = `jf:${item.Id}`;
+      const tmdbRaw    = item.ProviderIds?.Tmdb || item.ProviderIds?.tmdb || null;
+      const tmdbId     = tmdbRaw ? parseInt(tmdbRaw, 10) : null;
+
+      await db.run(
+        `INSERT INTO watched_items (user_id, source, category, title, external_id, tmdb_id, synced_at)
+         VALUES (?, 'jellyfin', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(user_id, source, category, external_id)
+         DO UPDATE SET title = excluded.title, tmdb_id = excluded.tmdb_id, synced_at = CURRENT_TIMESTAMP`,
+        [req.userId, category, item.Name || null, externalId, tmdbId]
+      );
+      totalFetched++;
+    }
+
+    send({ step: `${totalFetched} played items saved. Updating collection entries…`, pct: 75 });
     const updated = await autoApplyCompletions(req.userId);
 
     send({

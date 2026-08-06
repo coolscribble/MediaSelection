@@ -175,11 +175,14 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
   const handleAutoDetectAnime = () => runJob('Auto-detect Anime',  '/api/collections/auto-detect/anime',
     r => `Anime auto-detect: ${r.created} new collection(s), ${r.components} franchise groups`)
 
-  const startSync = (source: 'simkl' | 'anilist') =>
+  const startSync = (source: 'simkl' | 'anilist' | 'jellyfin') =>
     runJob(
-      source === 'simkl' ? 'Sync Simkl' : 'Sync AniList',
+      source === 'simkl' ? 'Sync Simkl' : source === 'anilist' ? 'Sync AniList' : 'Sync Jellyfin',
       `/api/collections/sync-watched/${source}`,
-      r => `${source === 'simkl' ? 'Simkl' : 'AniList'}: ${r.fetched} items saved, ${r.updated} collection entr${r.updated === 1 ? 'y' : 'ies'} marked as watched`
+      r => {
+        const name = source === 'simkl' ? 'Simkl' : source === 'anilist' ? 'AniList' : 'Jellyfin'
+        return `${name}: ${r.fetched} items saved, ${r.updated} collection entr${r.updated === 1 ? 'y' : 'ies'} marked as watched`
+      }
     )
 
   const displayed =
@@ -241,6 +244,10 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
         <button className="btn-ghost" onClick={() => startSync('anilist')} disabled={!!activeJob}
           title="Fetch all completed anime & manga from AniList and save to watched database">
           {activeJob?.type === 'Sync AniList' ? '⏳ Syncing…' : '🔄 Sync AniList'}
+        </button>
+        <button className="btn-ghost" onClick={() => startSync('jellyfin')} disabled={!!activeJob}
+          title="Fetch all played items from your Jellyfin server and mark matching collection entries as watched">
+          {activeJob?.type === 'Sync Jellyfin' ? '⏳ Syncing…' : '🎬 Sync Jellyfin'}
         </button>
         <button className="btn-ghost" onClick={handleAutoDetectAnime} disabled={!!activeJob} title="Group anime seasons/sequels via AniList relations">
           {activeJob?.type === 'Auto-detect Anime' ? '⏳ Working…' : '⛩ Auto-detect Anime'}
