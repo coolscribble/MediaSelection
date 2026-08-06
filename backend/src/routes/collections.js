@@ -7,21 +7,7 @@ const { db } = require('../database');
 // List all collections with item count + completion
 router.get('/', async (req, res) => {
   try {
-    // Auto-mark collection items as completed when their linked library item
-    // already has status='completed' in its metadata (e.g. from a Simkl sync
-    // that included the 'completed' status).  Runs fast — uses the existing
-    // user indexes and only touches rows where completed_at is still NULL.
-    await db.run(`
-      UPDATE collection_items
-      SET completed_at = CURRENT_TIMESTAMP
-      WHERE completed_at IS NULL
-      AND library_item_id IN (
-        SELECT id FROM library_items
-        WHERE user_id = ?
-        AND json_extract(metadata, '$.status') = 'completed'
-      )
-      AND collection_id IN (SELECT id FROM collections WHERE user_id = ?)
-    `, [req.userId, req.userId]);
+    await autoApplyCompletions(req.userId);
 
     const cols = await db.all(
       'SELECT id, name, category, cover_url, external_id, franchise_total, created_at FROM collections WHERE user_id = ? ORDER BY created_at DESC',
@@ -366,61 +352,109 @@ function sseSetup(res) {
   };
 }
 
-// After upsert: match watched_items against collection_items and update completed_at.
-// Returns { updated }.
-async function applyWatchedToCollections(userId) {
-  // Gather all watched item identifiers for this user
-  const watched = await db.all(
-    'SELECT source, category, external_id, tmdb_id FROM watched_items WHERE user_id = ?',
-    [userId]
-  );
-  const watchedTmdb    = new Set();  // Number tmdb_ids
-  const watchedSrcKey  = new Set();  // `${source}:${category}:${external_id}`
-  for (const w of watched) {
-    if (w.tmdb_id)     watchedTmdb.add(Number(w.tmdb_id));
-    if (w.external_id) watchedSrcKey.add(`${w.source}:${w.category}:${w.external_id}`);
-  }
-
-  // All non-completed collection items for this user, with their library link
-  const colItems = await db.all(`
-    SELECT ci.id, ci.tmdb_id, ci.library_item_id,
-           li.external_id                          AS lib_ext_id,
-           li.category                             AS lib_cat,
-           li.source                               AS lib_source,
-           json_extract(li.metadata, '$.status')   AS lib_status
-    FROM collection_items ci
-    JOIN collections c ON c.id = ci.collection_id
-    LEFT JOIN library_items li ON li.id = ci.library_item_id
-    WHERE c.user_id = ? AND ci.completed_at IS NULL
+// Comprehensive completion apply — called on every GET / and after each sync/auto-detect.
+// Returns number of newly-marked items.
+async function autoApplyCompletions(userId) {
+  // ── Step 1: Back-fill missing tmdb_id on collection_items ──────────────────
+  // Older rows may have been created before the tmdb_id column existed, or before
+  // auto-detect stored it.  Pull it from the linked library item's metadata.
+  await db.run(`
+    UPDATE collection_items
+    SET tmdb_id = CAST(json_extract(
+      (SELECT metadata FROM library_items WHERE id = collection_items.library_item_id),
+      '$.tmdb_id'
+    ) AS INTEGER)
+    WHERE tmdb_id IS NULL
+    AND library_item_id IS NOT NULL
+    AND collection_id IN (SELECT id FROM collections WHERE user_id = ?)
   `, [userId]);
 
-  const toUpdate = new Set();
-  for (const ci of colItems) {
-    // 0. Library item is already marked completed in its own metadata
-    if (ci.lib_status === 'completed') {
-      toUpdate.add(ci.id);
-      continue;
-    }
-    // 1. Match by TMDB ID on the collection item (most reliable — movies always have this)
-    if (ci.tmdb_id && watchedTmdb.has(Number(ci.tmdb_id))) {
-      toUpdate.add(ci.id);
-      continue;
-    }
-    // 2. Match by source:category:external_id via the library item link
-    //    (series/anime that are still in the library)
-    if (ci.lib_ext_id && ci.lib_cat && ci.lib_source) {
-      if (watchedSrcKey.has(`${ci.lib_source}:${ci.lib_cat}:${ci.lib_ext_id}`)) {
-        toUpdate.add(ci.id);
+  // Track how many we mark so callers can report it
+  const before = (await db.get(
+    'SELECT COUNT(*) AS n FROM collection_items ci JOIN collections c ON c.id = ci.collection_id WHERE c.user_id = ? AND ci.completed_at IS NOT NULL',
+    [userId]
+  ))?.n ?? 0;
+
+  // ── Step 2: Mark from library items with status = 'completed' ──────────────
+  // This covers anything you've synced via the main Simkl/AniList sync that
+  // included the 'completed' status — no need to press Sync Watched.
+  await db.run(`
+    UPDATE collection_items
+    SET completed_at = CURRENT_TIMESTAMP
+    WHERE completed_at IS NULL
+    AND collection_id IN (SELECT id FROM collections WHERE user_id = ?)
+    AND library_item_id IN (
+      SELECT id FROM library_items
+      WHERE user_id = ?
+      AND json_extract(metadata, '$.status') = 'completed'
+    )
+  `, [userId, userId]);
+
+  // ── Step 3: Mark from watched_items by TMDB ID ─────────────────────────────
+  // Match collection_items.tmdb_id against watched_items.tmdb_id, AND also match
+  // via the library item's metadata tmdb_id (catches items where collection_items.tmdb_id
+  // was still NULL before Step 1 ran on a *previous* page load, i.e. never got set).
+  const watchedTmdbRows = await db.all(
+    'SELECT DISTINCT tmdb_id FROM watched_items WHERE user_id = ? AND tmdb_id IS NOT NULL',
+    [userId]
+  );
+  if (watchedTmdbRows.length > 0) {
+    const ph   = watchedTmdbRows.map(() => '?').join(',');
+    const tIds = watchedTmdbRows.map(r => r.tmdb_id);
+
+    // Direct tmdb_id on collection_item
+    await db.run(`
+      UPDATE collection_items
+      SET completed_at = CURRENT_TIMESTAMP
+      WHERE completed_at IS NULL
+      AND collection_id IN (SELECT id FROM collections WHERE user_id = ?)
+      AND tmdb_id IN (${ph})
+    `, [userId, ...tIds]);
+
+    // Via library item's metadata tmdb_id (for items whose collection_items.tmdb_id
+    // might still be null from older rows not yet visited by Step 1)
+    await db.run(`
+      UPDATE collection_items
+      SET completed_at = CURRENT_TIMESTAMP
+      WHERE completed_at IS NULL
+      AND collection_id IN (SELECT id FROM collections WHERE user_id = ?)
+      AND library_item_id IN (
+        SELECT id FROM library_items
+        WHERE user_id = ?
+        AND CAST(json_extract(metadata, '$.tmdb_id') AS INTEGER) IN (${ph})
+      )
+    `, [userId, userId, ...tIds]);
+  }
+
+  // ── Step 4: Match series/anime by source:category:external_id ──────────────
+  // For items whose tmdb_id isn't known on either side.
+  const watchedKeys = await db.all(
+    'SELECT source, category, external_id FROM watched_items WHERE user_id = ? AND external_id IS NOT NULL',
+    [userId]
+  );
+  if (watchedKeys.length > 0) {
+    const keySet = new Set(watchedKeys.map(w => `${w.source}:${w.category}:${w.external_id}`));
+    const colItems = await db.all(`
+      SELECT ci.id, li.source AS lib_source, li.category AS lib_cat, li.external_id AS lib_ext_id
+      FROM collection_items ci
+      JOIN collections c ON c.id = ci.collection_id
+      LEFT JOIN library_items li ON li.id = ci.library_item_id
+      WHERE c.user_id = ? AND ci.completed_at IS NULL AND li.external_id IS NOT NULL
+    `, [userId]);
+    for (const ci of colItems) {
+      if (ci.lib_source && ci.lib_cat && ci.lib_ext_id) {
+        if (keySet.has(`${ci.lib_source}:${ci.lib_cat}:${ci.lib_ext_id}`)) {
+          await db.run('UPDATE collection_items SET completed_at = CURRENT_TIMESTAMP WHERE id = ?', [ci.id]);
+        }
       }
     }
   }
 
-  let updated = 0;
-  for (const id of toUpdate) {
-    await db.run('UPDATE collection_items SET completed_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
-    updated++;
-  }
-  return { updated };
+  const after = (await db.get(
+    'SELECT COUNT(*) AS n FROM collection_items ci JOIN collections c ON c.id = ci.collection_id WHERE c.user_id = ? AND ci.completed_at IS NOT NULL',
+    [userId]
+  ))?.n ?? 0;
+  return after - before;
 }
 
 // ── Sync from Simkl ───────────────────────────────────────────────────────────
@@ -492,7 +526,7 @@ router.get('/sync-watched/simkl', async (req, res) => {
     }
 
     send({ step: `${totalFetched} watched items saved. Updating collection entries…`, pct: 75 });
-    const { updated } = await applyWatchedToCollections(req.userId);
+    const updated = await autoApplyCompletions(req.userId);
 
     send({
       step: updated === 0
@@ -564,7 +598,7 @@ router.get('/sync-watched/anilist', async (req, res) => {
     }
 
     send({ step: `${totalFetched} watched items saved. Updating collection entries…`, pct: 80 });
-    const { updated } = await applyWatchedToCollections(req.userId);
+    const updated = await autoApplyCompletions(req.userId);
 
     send({
       step: updated === 0
@@ -653,11 +687,14 @@ router.get('/auto-detect/movies', async (req, res) => {
       created++;
     }
 
+    send({ step: 'Marking watched items as completed…', pct: 95 });
+    const marked = await autoApplyCompletions(req.userId);
+    const doneMsg = created === 0
+      ? `Checked ${withTmdb.length} movies — all franchises already in your collections.`
+      : `Created ${created} new collection(s) from ${withTmdb.length} movies.`;
     send({
-      step: created === 0
-        ? `Checked ${withTmdb.length} movies — all franchises already in your collections.`
-        : `Done! Created ${created} new collection(s) from ${withTmdb.length} movies.`,
-      pct: 100, done: true, result: { created, checked: withTmdb.length, groups: groups.size },
+      step: marked > 0 ? `${doneMsg} ${marked} entr${marked === 1 ? 'y' : 'ies'} marked as watched.` : doneMsg,
+      pct: 100, done: true, result: { created, checked: withTmdb.length, groups: groups.size, marked },
     });
     res.end();
   } catch (e) {
@@ -768,11 +805,14 @@ router.get('/auto-detect/anime', async (req, res) => {
       created++;
     }
 
+    send({ step: 'Marking watched items as completed…', pct: 95 });
+    const marked = await autoApplyCompletions(req.userId);
+    const doneMsg = created === 0
+      ? `Checked ${ids.length} anime — all franchises already in your collections.`
+      : `Created ${created} new collection(s) from ${ids.length} anime.`;
     send({
-      step: created === 0
-        ? `Checked ${ids.length} anime — all franchises already in your collections.`
-        : `Done! Created ${created} new collection(s) from ${ids.length} anime.`,
-      pct: 100, done: true, result: { created, checked: ids.length, components: components.length },
+      step: marked > 0 ? `${doneMsg} ${marked} entr${marked === 1 ? 'y' : 'ies'} marked as watched.` : doneMsg,
+      pct: 100, done: true, result: { created, checked: ids.length, components: components.length, marked },
     });
     res.end();
   } catch (e) {
