@@ -354,6 +354,8 @@ function sseSetup(res) {
 
 // Comprehensive completion apply — called on every GET / and after each sync/auto-detect.
 // Returns number of newly-marked items.
+// NOTE: Uses pure SQL subqueries throughout — avoids SQLite's ~999 bound-parameter limit
+// which would silently break the old IN(?,?,?...) approach when users have 1000+ watched items.
 async function autoApplyCompletions(userId) {
   // ── Step 1: Back-fill missing tmdb_id on collection_items ──────────────────
   // Older rows may have been created before the tmdb_id column existed, or before
@@ -375,9 +377,8 @@ async function autoApplyCompletions(userId) {
     [userId]
   ))?.n ?? 0;
 
-  // ── Step 2: Mark from library items with status = 'completed' ──────────────
-  // This covers anything you've synced via the main Simkl/AniList sync that
-  // included the 'completed' status — no need to press Sync Watched.
+  // ── Step 2: Mark from library items with completed status ──────────────────
+  // Case-insensitive so 'completed' (Simkl) and 'COMPLETED' (AniList user status) both match.
   await db.run(`
     UPDATE collection_items
     SET completed_at = CURRENT_TIMESTAMP
@@ -386,69 +387,60 @@ async function autoApplyCompletions(userId) {
     AND library_item_id IN (
       SELECT id FROM library_items
       WHERE user_id = ?
-      AND json_extract(metadata, '$.status') = 'completed'
+      AND lower(json_extract(metadata, '$.status')) = 'completed'
     )
   `, [userId, userId]);
 
   // ── Step 3: Mark from watched_items by TMDB ID ─────────────────────────────
-  // Match collection_items.tmdb_id against watched_items.tmdb_id, AND also match
-  // via the library item's metadata tmdb_id (catches items where collection_items.tmdb_id
-  // was still NULL before Step 1 ran on a *previous* page load, i.e. never got set).
-  const watchedTmdbRows = await db.all(
-    'SELECT DISTINCT tmdb_id FROM watched_items WHERE user_id = ? AND tmdb_id IS NOT NULL',
-    [userId]
-  );
-  if (watchedTmdbRows.length > 0) {
-    const ph   = watchedTmdbRows.map(() => '?').join(',');
-    const tIds = watchedTmdbRows.map(r => r.tmdb_id);
+  // Pure SQL subquery — no JS array, no risk of exceeding SQLite parameter limit.
+  // Via collection_items.tmdb_id (direct match)
+  await db.run(`
+    UPDATE collection_items
+    SET completed_at = CURRENT_TIMESTAMP
+    WHERE completed_at IS NULL
+    AND tmdb_id IS NOT NULL
+    AND collection_id IN (SELECT id FROM collections WHERE user_id = ?)
+    AND tmdb_id IN (
+      SELECT tmdb_id FROM watched_items WHERE user_id = ? AND tmdb_id IS NOT NULL
+    )
+  `, [userId, userId]);
 
-    // Direct tmdb_id on collection_item
-    await db.run(`
-      UPDATE collection_items
-      SET completed_at = CURRENT_TIMESTAMP
-      WHERE completed_at IS NULL
-      AND collection_id IN (SELECT id FROM collections WHERE user_id = ?)
-      AND tmdb_id IN (${ph})
-    `, [userId, ...tIds]);
-
-    // Via library item's metadata tmdb_id (for items whose collection_items.tmdb_id
-    // might still be null from older rows not yet visited by Step 1)
-    await db.run(`
-      UPDATE collection_items
-      SET completed_at = CURRENT_TIMESTAMP
-      WHERE completed_at IS NULL
-      AND collection_id IN (SELECT id FROM collections WHERE user_id = ?)
-      AND library_item_id IN (
-        SELECT id FROM library_items
-        WHERE user_id = ?
-        AND CAST(json_extract(metadata, '$.tmdb_id') AS INTEGER) IN (${ph})
+  // Via library item's metadata tmdb_id (for items whose collection_items.tmdb_id is still null)
+  await db.run(`
+    UPDATE collection_items
+    SET completed_at = CURRENT_TIMESTAMP
+    WHERE completed_at IS NULL
+    AND collection_id IN (SELECT id FROM collections WHERE user_id = ?)
+    AND library_item_id IN (
+      SELECT li.id FROM library_items li
+      WHERE li.user_id = ?
+      AND CAST(json_extract(li.metadata, '$.tmdb_id') AS INTEGER) IN (
+        SELECT tmdb_id FROM watched_items WHERE user_id = ? AND tmdb_id IS NOT NULL
       )
-    `, [userId, userId, ...tIds]);
-  }
+    )
+  `, [userId, userId, userId]);
 
-  // ── Step 4: Match series/anime by source:category:external_id ──────────────
-  // For items whose tmdb_id isn't known on either side.
-  const watchedKeys = await db.all(
-    'SELECT source, category, external_id FROM watched_items WHERE user_id = ? AND external_id IS NOT NULL',
-    [userId]
-  );
-  if (watchedKeys.length > 0) {
-    const keySet = new Set(watchedKeys.map(w => `${w.source}:${w.category}:${w.external_id}`));
-    const colItems = await db.all(`
-      SELECT ci.id, li.source AS lib_source, li.category AS lib_cat, li.external_id AS lib_ext_id
+  // ── Step 4: Match by source:category:external_id (SQL JOIN) ────────────────
+  // Handles anime/manga/series where TMDB IDs aren't available on either side.
+  // Pure SQL — single query, no JS Set iteration.
+  await db.run(`
+    UPDATE collection_items
+    SET completed_at = CURRENT_TIMESTAMP
+    WHERE completed_at IS NULL
+    AND id IN (
+      SELECT ci.id
       FROM collection_items ci
       JOIN collections c ON c.id = ci.collection_id
-      LEFT JOIN library_items li ON li.id = ci.library_item_id
-      WHERE c.user_id = ? AND ci.completed_at IS NULL AND li.external_id IS NOT NULL
-    `, [userId]);
-    for (const ci of colItems) {
-      if (ci.lib_source && ci.lib_cat && ci.lib_ext_id) {
-        if (keySet.has(`${ci.lib_source}:${ci.lib_cat}:${ci.lib_ext_id}`)) {
-          await db.run('UPDATE collection_items SET completed_at = CURRENT_TIMESTAMP WHERE id = ?', [ci.id]);
-        }
-      }
-    }
-  }
+      JOIN library_items li ON li.id = ci.library_item_id
+      JOIN watched_items wi
+        ON  wi.user_id   = c.user_id
+        AND wi.source    = li.source
+        AND wi.category  = li.category
+        AND wi.external_id = li.external_id
+      WHERE c.user_id = ?
+        AND li.external_id IS NOT NULL
+    )
+  `, [userId]);
 
   const after = (await db.get(
     'SELECT COUNT(*) AS n FROM collection_items ci JOIN collections c ON c.id = ci.collection_id WHERE c.user_id = ? AND ci.completed_at IS NOT NULL',
