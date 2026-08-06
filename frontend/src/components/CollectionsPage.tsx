@@ -65,7 +65,7 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
   const [detectingAnime, setDetectingAnime] = useState(false)
   const [missing, setMissing] = useState<MissingMovie[]>([])
   const [missingLoading, setMissingLoading] = useState(false)
-  const [syncProgress, setSyncProgress] = useState<{ step: string; pct: number } | null>(null)
+  const [syncProgress, setSyncProgress] = useState<{ step: string; pct: number; source: string } | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -169,29 +169,32 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
     } finally { setDetectingAnime(false) }
   }
 
-  const handleSyncWatched = () => {
+  const startSync = (source: 'simkl' | 'anilist') => {
     if (syncProgress) return
-    setSyncProgress({ step: 'Connecting…', pct: 0 })
-    const es = new EventSource('/api/collections/sync-watched', { withCredentials: true })
+    setSyncProgress({ step: 'Connecting…', pct: 0, source })
+    const es = new EventSource(`/api/collections/sync-watched/${source}`, { withCredentials: true })
     es.onmessage = (e) => {
       try {
-        const data = JSON.parse(e.data) as { step?: string; pct?: number; done?: boolean; error?: string; result?: { updated: number } }
-        setSyncProgress({ step: data.step || data.error || 'Working…', pct: data.pct ?? 50 })
+        const data = JSON.parse(e.data) as { step?: string; pct?: number; done?: boolean; error?: boolean; result?: { fetched: number; updated: number } }
+        setSyncProgress({ step: data.step || 'Working…', pct: data.pct ?? 50, source })
         if (data.done) {
           es.close()
           setTimeout(() => {
             setSyncProgress(null)
             load()
-            if (data.error) toast(data.error, 'error')
-            else toast(data.result ? `Sync done: ${data.result.updated} entr${data.result.updated === 1 ? 'y' : 'ies'} marked as watched` : 'Sync complete', 'success')
+            if (data.error) toast(data.step || 'Sync failed', 'error')
+            else {
+              const r = data.result
+              toast(r ? `${source === 'simkl' ? 'Simkl' : 'AniList'}: ${r.fetched} items saved, ${r.updated} collection entr${r.updated === 1 ? 'y' : 'ies'} marked as watched` : 'Sync complete', 'success')
+            }
           }, 1200)
         }
-      } catch { /* ignore parse errors */ }
+      } catch { /* ignore */ }
     }
     es.onerror = () => {
       es.close()
       setSyncProgress(null)
-      toast('Sync failed — check your Simkl/AniList settings', 'error')
+      toast(`${source === 'simkl' ? 'Simkl' : 'AniList'} sync failed — check Settings → Connections`, 'error')
     }
   }
 
@@ -244,8 +247,13 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
         <button className="btn-ghost" onClick={onBack}>← Back</button>
         <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>🗂 Collections</h2>
         <div style={{ flex: 1 }} />
-        <button className="btn-ghost" onClick={handleSyncWatched} disabled={!!syncProgress} title="Mark collection items as watched based on your Simkl & AniList history">
-          {syncProgress ? '⏳ Syncing…' : '🔄 Sync Watched'}
+        <button className="btn-ghost" onClick={() => startSync('simkl')} disabled={!!syncProgress}
+          title="Fetch completed movies, TV shows & anime from Simkl and save to watched database">
+          {syncProgress?.source === 'simkl' ? '⏳ Syncing…' : '🔄 Sync Simkl'}
+        </button>
+        <button className="btn-ghost" onClick={() => startSync('anilist')} disabled={!!syncProgress}
+          title="Fetch completed anime & manga from AniList and save to watched database">
+          {syncProgress?.source === 'anilist' ? '⏳ Syncing…' : '🔄 Sync AniList'}
         </button>
         <button className="btn-ghost" onClick={handleAutoDetectAnime} disabled={detectingAnime} title="Group anime seasons/sequels via AniList relations">
           {detectingAnime ? '…' : '⛩ Auto-detect Anime'}
@@ -260,7 +268,7 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
       {syncProgress && (
         <div style={{ padding: '8px 20px', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5, fontSize: 12, color: 'var(--text2)' }}>
-            <span>{syncProgress.step}</span>
+            <span><strong>{syncProgress.source === 'simkl' ? 'Simkl' : 'AniList'}</strong> — {syncProgress.step}</span>
             <span style={{ fontVariantNumeric: 'tabular-nums' }}>{syncProgress.pct}%</span>
           </div>
           <div style={{ height: 5, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>

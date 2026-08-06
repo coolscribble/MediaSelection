@@ -205,6 +205,20 @@ async function init() {
   try { await db.run('ALTER TABLE collections ADD COLUMN franchise_total INTEGER') } catch {}
 
   await db.exec(`
+    CREATE TABLE IF NOT EXISTS watched_items (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id     TEXT NOT NULL,
+      source      TEXT NOT NULL,
+      category    TEXT NOT NULL,
+      title       TEXT,
+      external_id TEXT NOT NULL,
+      tmdb_id     INTEGER,
+      synced_at   DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, source, category, external_id)
+    )
+  `);
+
+  await db.exec(`
     CREATE TABLE IF NOT EXISTS tmdb_country_cache (
       tmdb_id   TEXT NOT NULL,
       tmdb_type TEXT NOT NULL,

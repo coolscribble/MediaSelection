@@ -337,162 +337,222 @@ router.post('/auto-detect-anime', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Sync collection item completion from Simkl + AniList via Server-Sent Events
-router.get('/sync-watched', async (req, res) => {
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+function sseSetup(res) {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  if (typeof res.flushHeaders === 'function') res.flushHeaders();
-
-  const send = (data) => {
+  res.setHeader('X-Accel-Buffering', 'no');
+  res.flushHeaders();
+  return (data) => {
     res.write(`data: ${JSON.stringify(data)}\n\n`);
-    if (typeof res.flush === 'function') res.flush();
   };
+}
 
-  try {
-    // Fetch all non-completed collection items for this user with their library link
-    const colItems = await db.all(`
-      SELECT ci.id, ci.tmdb_id, ci.library_item_id,
-             li.external_id AS lib_ext_id, li.category AS lib_cat
-      FROM collection_items ci
-      JOIN collections c ON c.id = ci.collection_id
-      LEFT JOIN library_items li ON li.id = ci.library_item_id
-      WHERE c.user_id = ? AND ci.completed_at IS NULL
-    `, [req.userId]);
+// After upsert: match watched_items against collection_items and update completed_at.
+// Returns { updated }.
+async function applyWatchedToCollections(userId) {
+  // Gather all watched item identifiers for this user
+  const watched = await db.all(
+    'SELECT source, category, external_id, tmdb_id FROM watched_items WHERE user_id = ?',
+    [userId]
+  );
+  const watchedTmdb    = new Set();  // Number tmdb_ids
+  const watchedSrcKey  = new Set();  // `${source}:${category}:${external_id}`
+  for (const w of watched) {
+    if (w.tmdb_id)     watchedTmdb.add(Number(w.tmdb_id));
+    if (w.external_id) watchedSrcKey.add(`${w.source}:${w.category}:${w.external_id}`);
+  }
 
-    // Build lookup maps
-    //   byTmdb:   Number(tmdb_id) → [ci_id, ...]
-    //   byLibKey: `${category}:${external_id}` → [ci_id, ...]
-    const byTmdb   = new Map();
-    const byLibKey = new Map();
+  // All non-completed collection items for this user, with their library link
+  const colItems = await db.all(`
+    SELECT ci.id, ci.tmdb_id, ci.library_item_id,
+           li.external_id AS lib_ext_id,
+           li.category    AS lib_cat,
+           li.source      AS lib_source
+    FROM collection_items ci
+    JOIN collections c ON c.id = ci.collection_id
+    LEFT JOIN library_items li ON li.id = ci.library_item_id
+    WHERE c.user_id = ? AND ci.completed_at IS NULL
+  `, [userId]);
 
-    for (const ci of colItems) {
-      if (ci.tmdb_id) {
-        if (!byTmdb.has(ci.tmdb_id)) byTmdb.set(ci.tmdb_id, []);
-        byTmdb.get(ci.tmdb_id).push(ci.id);
-      }
-      if (ci.lib_ext_id && ci.lib_cat) {
-        const k = `${ci.lib_cat}:${ci.lib_ext_id}`;
-        if (!byLibKey.has(k)) byLibKey.set(k, []);
-        byLibKey.get(k).push(ci.id);
+  const toUpdate = new Set();
+  for (const ci of colItems) {
+    // 1. Match by TMDB ID on the collection item (most reliable — movies always have this)
+    if (ci.tmdb_id && watchedTmdb.has(Number(ci.tmdb_id))) {
+      toUpdate.add(ci.id);
+      continue;
+    }
+    // 2. Match by source:category:external_id via the library item link
+    //    (series/anime that are still in the library)
+    if (ci.lib_ext_id && ci.lib_cat && ci.lib_source) {
+      if (watchedSrcKey.has(`${ci.lib_source}:${ci.lib_cat}:${ci.lib_ext_id}`)) {
+        toUpdate.add(ci.id);
       }
     }
+  }
 
-    const toUpdate = new Set(); // ci_id values to mark completed
+  let updated = 0;
+  for (const id of toUpdate) {
+    await db.run('UPDATE collection_items SET completed_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
+    updated++;
+  }
+  return { updated };
+}
 
-    // ── Simkl ───────────────────────────────────────────────────────────────
+// ── Sync from Simkl ───────────────────────────────────────────────────────────
+
+router.get('/sync-watched/simkl', async (req, res) => {
+  const send = sseSetup(res);
+  try {
     const [cidRow, tokenRow] = await Promise.all([
       db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [req.userId, 'simkl_client_id']),
       db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [req.userId, 'simkl_access_token']),
     ]);
-
     if (!cidRow?.value || !tokenRow?.value) {
-      send({ step: 'Simkl not configured — skipping', pct: 10 });
-    } else {
-      const cid = cidRow.value;
-      const simklHdrs = {
-        Authorization: `Bearer ${tokenRow.value}`,
-        'simkl-api-key': cid,
-        'Content-Type': 'application/json',
-      };
-      const simklTypes = [
-        { type: 'movies', key: 'movie', cat: 'movies', label: 'movies'   },
-        { type: 'shows',  key: 'show',  cat: 'series', label: 'TV shows' },
-        { type: 'anime',  key: 'anime', cat: 'anime',  label: 'anime'    },
-      ];
-      for (let i = 0; i < simklTypes.length; i++) {
-        const { type, key, cat, label } = simklTypes[i];
-        send({ step: `Fetching completed ${label} from Simkl…`, pct: 5 + i * 13 });
-        try {
-          const r = await fetch(
-            `https://api.simkl.com/sync/all-items/completed/${type}?client_id=${encodeURIComponent(cid)}&extended=full`,
-            { headers: simklHdrs }
-          );
-          if (!r.ok) continue;
-          const data = await r.json();
-          for (const entry of (data[type] || [])) {
-            const item = entry[key];
-            if (!item) continue;
-            const tmdbId  = item.ids?.tmdb  ? Number(item.ids.tmdb)  : null;
-            const simklId = item.ids?.simkl ? String(item.ids.simkl) : null;
-            if (tmdbId)  for (const id of (byTmdb.get(tmdbId)              || [])) toUpdate.add(id);
-            if (simklId) for (const id of (byLibKey.get(`${cat}:${simklId}`) || [])) toUpdate.add(id);
-          }
-        } catch { /* skip type on error */ }
+      send({ step: 'Simkl is not configured. Add your Client ID and token in Settings → Connections.', pct: 100, done: true, error: true });
+      return res.end();
+    }
+
+    const cid   = cidRow.value;
+    const token = tokenRow.value;
+    const hdrs  = {
+      Authorization: `Bearer ${token}`,
+      'simkl-api-key': cid,
+      'Content-Type': 'application/json',
+    };
+
+    const types = [
+      { type: 'movies', key: 'movie', cat: 'movies', label: 'movies'   },
+      { type: 'shows',  key: 'show',  cat: 'series', label: 'TV shows' },
+      { type: 'anime',  key: 'anime', cat: 'anime',  label: 'anime'    },
+    ];
+
+    let totalFetched = 0;
+
+    for (let i = 0; i < types.length; i++) {
+      const { type, key, cat, label } = types[i];
+      send({ step: `Fetching completed ${label} from Simkl…`, pct: 5 + i * 20 });
+
+      let items;
+      try {
+        const r = await fetch(
+          `https://api.simkl.com/sync/all-items/completed/${type}?client_id=${encodeURIComponent(cid)}&extended=full`,
+          { headers: hdrs }
+        );
+        if (!r.ok) {
+          send({ step: `Simkl ${label}: server returned ${r.status}`, pct: 10 + i * 20 });
+          continue;
+        }
+        items = (await r.json())[type] || [];
+      } catch (e) {
+        send({ step: `Simkl ${label}: network error — ${e.message}`, pct: 10 + i * 20 });
+        continue;
       }
-      send({ step: 'Simkl done', pct: 50 });
+
+      send({ step: `Saving ${items.length} completed ${label} to database…`, pct: 12 + i * 20 });
+      for (const entry of items) {
+        const item = entry[key];
+        if (!item) continue;
+        const simklId = item.ids?.simkl ? String(item.ids.simkl) : null;
+        if (!simklId) continue;
+        const tmdbId = item.ids?.tmdb ? Number(item.ids.tmdb) : null;
+        await db.run(
+          `INSERT INTO watched_items (user_id, source, category, title, external_id, tmdb_id, synced_at)
+           VALUES (?, 'simkl', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(user_id, source, category, external_id)
+           DO UPDATE SET title = excluded.title, tmdb_id = excluded.tmdb_id, synced_at = CURRENT_TIMESTAMP`,
+          [req.userId, cat, item.title || null, simklId, tmdbId]
+        );
+        totalFetched++;
+      }
     }
 
-    // ── AniList ──────────────────────────────────────────────────────────────
-    const alUserRow = await db.get(
-      'SELECT value FROM settings WHERE user_id = ? AND key = ?',
-      [req.userId, 'anilist_username']
-    );
-    if (!alUserRow?.value) {
-      send({ step: 'AniList not configured — skipping', pct: 60 });
-    } else {
-      send({ step: 'Fetching completed anime from AniList…', pct: 60 });
-      try {
-        const query = `query($u:String){MediaListCollection(userName:$u,type:ANIME,status:COMPLETED){lists{entries{media{id}}}}}`;
-        const r = await fetch('https://graphql.anilist.co', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({ query, variables: { u: alUserRow.value } }),
-        });
-        if (r.ok) {
-          const json = await r.json();
-          for (const list of (json.data?.MediaListCollection?.lists || [])) {
-            for (const entry of (list.entries || [])) {
-              const alId = String(entry.media?.id || '');
-              if (alId) for (const id of (byLibKey.get(`anime:${alId}`) || [])) toUpdate.add(id);
-            }
-          }
-        }
-      } catch { /* skip */ }
-      send({ step: 'AniList done', pct: 80 });
-    }
-
-    // Also fetch completed manga from AniList if configured above
-    if (alUserRow?.value) {
-      send({ step: 'Fetching completed manga from AniList…', pct: 83 });
-      try {
-        const q2 = `query($u:String){MediaListCollection(userName:$u,type:MANGA,status:COMPLETED){lists{entries{media{id}}}}}`;
-        const r2 = await fetch('https://graphql.anilist.co', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-          body: JSON.stringify({ query: q2, variables: { u: alUserRow.value } }),
-        });
-        if (r2.ok) {
-          const j2 = await r2.json();
-          for (const list of (j2.data?.MediaListCollection?.lists || [])) {
-            for (const entry of (list.entries || [])) {
-              const alId = String(entry.media?.id || '');
-              if (alId) for (const id of (byLibKey.get(`manga:${alId}`) || [])) toUpdate.add(id);
-            }
-          }
-        }
-      } catch { /* skip */ }
-    }
-
-    // ── Apply ────────────────────────────────────────────────────────────────
-    const count = toUpdate.size;
-    send({ step: count === 0 ? 'Nothing new to mark' : `Marking ${count} entr${count === 1 ? 'y' : 'ies'} as watched…`, pct: 90 });
-
-    let updated = 0;
-    for (const id of toUpdate) {
-      await db.run('UPDATE collection_items SET completed_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
-      updated++;
-    }
+    send({ step: `${totalFetched} watched items saved. Updating collection entries…`, pct: 75 });
+    const { updated } = await applyWatchedToCollections(req.userId);
 
     send({
       step: updated === 0
-        ? 'Already up to date — nothing changed.'
-        : `Done! ${updated} collection entr${updated === 1 ? 'y' : 'ies'} marked as watched.`,
-      pct: 100, done: true, result: { updated },
+        ? `${totalFetched} items saved. No new collection entries to mark.`
+        : `${totalFetched} items saved. ${updated} collection entr${updated === 1 ? 'y' : 'ies'} marked as watched!`,
+      pct: 100, done: true, result: { fetched: totalFetched, updated },
     });
     res.end();
   } catch (e) {
-    res.write(`data: ${JSON.stringify({ error: e.message, done: true })}\n\n`);
+    send({ step: `Error: ${e.message}`, pct: 100, done: true, error: true });
+    res.end();
+  }
+});
+
+// ── Sync from AniList ─────────────────────────────────────────────────────────
+
+router.get('/sync-watched/anilist', async (req, res) => {
+  const send = sseSetup(res);
+  try {
+    const userRow = await db.get(
+      'SELECT value FROM settings WHERE user_id = ? AND key = ?',
+      [req.userId, 'anilist_username']
+    );
+    if (!userRow?.value) {
+      send({ step: 'AniList username is not configured. Add it in Settings → Connections.', pct: 100, done: true, error: true });
+      return res.end();
+    }
+
+    const username = userRow.value;
+    const alFetch  = async (type) => {
+      const query = `query($u:String,$t:MediaType){MediaListCollection(userName:$u,type:$t,status:COMPLETED){lists{entries{media{id title{romaji english}}}}}}`;
+      const r = await fetch('https://graphql.anilist.co', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ query, variables: { u: username, t: type } }),
+      });
+      if (!r.ok) throw new Error(`AniList API returned ${r.status}`);
+      const json = await r.json();
+      if (json.errors?.length) throw new Error(json.errors[0].message);
+      return (json.data?.MediaListCollection?.lists || []).flatMap(l => l.entries);
+    };
+
+    let totalFetched = 0;
+
+    for (const [type, cat, label] of [['ANIME', 'anime', 'anime'], ['MANGA', 'manga', 'manga']]) {
+      send({ step: `Fetching completed ${label} from AniList…`, pct: type === 'ANIME' ? 10 : 50 });
+      let entries;
+      try {
+        entries = await alFetch(type);
+      } catch (e) {
+        send({ step: `AniList ${label}: ${e.message}`, pct: type === 'ANIME' ? 20 : 60 });
+        continue;
+      }
+
+      send({ step: `Saving ${entries.length} completed ${label} to database…`, pct: type === 'ANIME' ? 25 : 60 });
+      for (const entry of entries) {
+        const media = entry.media;
+        if (!media?.id) continue;
+        const title = media.title?.english || media.title?.romaji || null;
+        await db.run(
+          `INSERT INTO watched_items (user_id, source, category, title, external_id, synced_at)
+           VALUES (?, 'anilist', ?, ?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(user_id, source, category, external_id)
+           DO UPDATE SET title = excluded.title, synced_at = CURRENT_TIMESTAMP`,
+          [req.userId, cat, title, String(media.id)]
+        );
+        totalFetched++;
+      }
+    }
+
+    send({ step: `${totalFetched} watched items saved. Updating collection entries…`, pct: 80 });
+    const { updated } = await applyWatchedToCollections(req.userId);
+
+    send({
+      step: updated === 0
+        ? `${totalFetched} items saved. No new collection entries to mark.`
+        : `${totalFetched} items saved. ${updated} collection entr${updated === 1 ? 'y' : 'ies'} marked as watched!`,
+      pct: 100, done: true, result: { fetched: totalFetched, updated },
+    });
+    res.end();
+  } catch (e) {
+    send({ step: `Error: ${e.message}`, pct: 100, done: true, error: true });
     res.end();
   }
 });
