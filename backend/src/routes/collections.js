@@ -13,7 +13,7 @@ router.get('/', async (req, res) => {
     );
     const result = await Promise.all(cols.map(async col => {
       const items = await db.all(
-        'SELECT id, library_item_id, title, thumbnail_url, completed_at, sort_order FROM collection_items WHERE collection_id = ? ORDER BY sort_order, added_at',
+        'SELECT id, library_item_id, title, thumbnail_url, completed_at, sort_order, tmdb_id FROM collection_items WHERE collection_id = ? ORDER BY sort_order, added_at',
         [col.id]
       );
       return { ...col, items };
@@ -69,7 +69,7 @@ router.post('/:id/items', async (req, res) => {
     if (!library_item_id) return res.status(400).json({ error: 'library_item_id is required' });
 
     const item = await db.get(
-      'SELECT id, title, thumbnail_url FROM library_items WHERE id = ? AND user_id = ? AND category = ?',
+      'SELECT id, title, thumbnail_url, metadata FROM library_items WHERE id = ? AND user_id = ? AND category = ?',
       [library_item_id, req.userId, col.category]
     );
     if (!item) return res.status(404).json({ error: 'Library item not found or wrong category' });
@@ -80,11 +80,12 @@ router.post('/:id/items', async (req, res) => {
     );
     if (dup) return res.status(400).json({ error: 'Item already in collection' });
 
+    const tmdbId = (() => { try { return JSON.parse(item.metadata || '{}').tmdb_id || null; } catch { return null; } })();
     const r = await db.run(
-      'INSERT INTO collection_items (collection_id, library_item_id, title, thumbnail_url) VALUES (?, ?, ?, ?)',
-      [col.id, library_item_id, item.title, item.thumbnail_url]
+      'INSERT INTO collection_items (collection_id, library_item_id, title, thumbnail_url, tmdb_id) VALUES (?, ?, ?, ?, ?)',
+      [col.id, library_item_id, item.title, item.thumbnail_url, tmdbId]
     );
-    res.json({ id: r.lastInsertRowid, library_item_id: item.id, title: item.title, thumbnail_url: item.thumbnail_url });
+    res.json({ id: r.lastInsertRowid, library_item_id: item.id, title: item.title, thumbnail_url: item.thumbnail_url, tmdb_id: tmdbId });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -98,7 +99,7 @@ router.delete('/:id/items/:itemId', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// Movies in the TMDB franchise that are NOT yet in the user's library
+// Franchise movies not yet in this collection, with library status per entry
 router.get('/:id/missing', async (req, res) => {
   try {
     const col = await db.get(
@@ -106,7 +107,6 @@ router.get('/:id/missing', async (req, res) => {
       [req.params.id, req.userId]
     );
     if (!col) return res.status(404).json({ error: 'Not found' });
-    // Only TMDB-linked movie collections have an external_id
     if (col.category !== 'movies' || !col.external_id) return res.json({ missing: [] });
 
     const keyRow = await db.get(
@@ -121,25 +121,39 @@ router.get('/:id/missing', async (req, res) => {
     if (!r.ok) return res.status(502).json({ error: `TMDB error: ${r.status}` });
     const data = await r.json();
 
-    // Collect all TMDB IDs the user already has in their movies library
+    // TMDB IDs already in THIS collection (current + completed items)
+    const colItems = await db.all(
+      'SELECT tmdb_id FROM collection_items WHERE collection_id = ? AND tmdb_id IS NOT NULL',
+      [col.id]
+    );
+    const colTmdbIds = new Set(colItems.map(ci => ci.tmdb_id));
+
+    // User's entire movies library keyed by tmdb_id → { finished }
     const userMovies = await db.all(
       "SELECT metadata FROM library_items WHERE user_id = ? AND category = 'movies'",
       [req.userId]
     );
-    const userTmdbIds = new Set(
-      userMovies.map(m => {
-        try { return JSON.parse(m.metadata || '{}').tmdb_id; } catch { return null; }
-      }).filter(Boolean)
-    );
+    const userByTmdb = new Map(); // tmdb_id → { finished: bool }
+    for (const m of userMovies) {
+      try {
+        const meta = JSON.parse(m.metadata || '{}');
+        if (meta.tmdb_id) userByTmdb.set(meta.tmdb_id, { finished: meta.status === 'completed' });
+      } catch { /* skip */ }
+    }
 
     const missing = (data.parts || [])
-      .filter(p => p.id && !userTmdbIds.has(p.id))
-      .map(p => ({
-        tmdb_id:      p.id,
-        title:        p.title,
-        release_date: p.release_date || null,
-        poster_url:   p.poster_path ? `https://image.tmdb.org/t/p/w200${p.poster_path}` : null,
-      }))
+      .filter(p => p.id && !colTmdbIds.has(p.id))   // not already in this collection
+      .map(p => {
+        const lib = userByTmdb.get(p.id);
+        return {
+          tmdb_id:      p.id,
+          title:        p.title,
+          release_date: p.release_date || null,
+          poster_url:   p.poster_path ? `https://image.tmdb.org/t/p/w200${p.poster_path}` : null,
+          in_library:   !!lib,
+          finished:     lib?.finished ?? false,
+        };
+      })
       .sort((a, b) => (a.release_date || '').localeCompare(b.release_date || ''));
 
     res.json({ missing });

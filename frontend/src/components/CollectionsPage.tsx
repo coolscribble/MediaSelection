@@ -38,6 +38,8 @@ interface MissingMovie {
   title: string
   release_date: string | null
   poster_url: string | null
+  in_library: boolean
+  finished: boolean
 }
 
 interface Props {
@@ -277,10 +279,21 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
                     <div className="collection-card-title" title={col.name}>{col.name}</div>
                     <div className="collection-card-meta">{CATEGORY_ICONS[col.category]} {CATEGORY_LABELS[col.category]} · {total} {total === 1 ? 'entry' : 'entries'}</div>
                     {total > 0 && (
-                      <div className={`collection-card-progress ${complete ? 'complete' : done > 0 ? 'partial' : ''}`}>
-                        {complete ? '✓ Complete' : `${done}/${total} complete`}
-                        {complete ? ` · +${xp} XP` : ` · +${xp} XP on finish`}
-                      </div>
+                      <>
+                        <div style={{ margin: '5px 0 3px', height: 5, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
+                          <div style={{
+                            height: '100%',
+                            width: `${Math.round((done / total) * 100)}%`,
+                            borderRadius: 3,
+                            background: complete ? '#27ae60' : done > 0 ? '#e67e22' : '#555',
+                            transition: 'width 0.4s',
+                          }} />
+                        </div>
+                        <div className={`collection-card-progress ${complete ? 'complete' : done > 0 ? 'partial' : ''}`}>
+                          {complete ? '✓ Complete' : `${done}/${total} done`}
+                          {complete ? ` · +${xp} XP` : ` · +${xp} XP on finish`}
+                        </div>
+                      </>
                     )}
                   </div>
                   <div className="collection-card-overlay">
@@ -301,14 +314,28 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
           onClick={e => { if (e.target === e.currentTarget) { setSelected(null); setAddingItem(false); setMissing([]) } }}>
           <div style={{ width: '100%', maxWidth: 700, background: 'var(--surface)', borderRadius: '12px 12px 0 0', padding: 20, maxHeight: '80vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
               <span style={{ fontSize: 20 }}>{CATEGORY_ICONS[selected.category]}</span>
               <h3 style={{ margin: 0, flex: 1, fontSize: 16 }}>{selected.name}</h3>
               <span style={{ fontSize: 12, color: 'var(--text2)' }}>
-                {completionOf(selected).done}/{completionOf(selected).total} complete · +{bonusXp(selected)} XP bonus
+                {completionOf(selected).done}/{completionOf(selected).total} done · +{bonusXp(selected)} XP bonus
               </span>
               <button className="btn-ghost" style={{ fontSize: 18, padding: '0 6px' }} onClick={() => { setSelected(null); setAddingItem(false); setMissing([]) }}>×</button>
             </div>
+            {completionOf(selected).total > 0 && (() => {
+              const { done, total, complete } = completionOf(selected)
+              return (
+                <div style={{ marginBottom: 16, height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
+                  <div style={{
+                    height: '100%',
+                    width: `${Math.round((done / total) * 100)}%`,
+                    borderRadius: 3,
+                    background: complete ? '#27ae60' : done > 0 ? '#e67e22' : '#555',
+                    transition: 'width 0.4s',
+                  }} />
+                </div>
+              )
+            })()}
 
             {/* Items list */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
@@ -330,23 +357,34 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
               )}
             </div>
 
-            {/* Missing movies from TMDB franchise */}
+            {/* Franchise movies not yet in this collection */}
             {selected.category === 'movies' && selected.external_id && (missingLoading || missing.length > 0) && (
               <div style={{ marginTop: 16, marginBottom: 4 }}>
                 <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
-                  {missingLoading ? '⏳ Checking franchise…' : `🔍 ${missing.length} not in your library`}
+                  {missingLoading ? '⏳ Checking franchise…' : `🔍 ${missing.length} not in this collection`}
                 </div>
                 {!missingLoading && (
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {missing.map(m => (
-                      <div key={m.tmdb_id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg)', border: '1px dashed var(--border)', borderRadius: 6, padding: '6px 10px', opacity: 0.6 }}>
-                        {m.poster_url && <img src={m.poster_url} alt={m.title} style={{ width: 24, height: 34, objectFit: 'cover', borderRadius: 2, filter: 'grayscale(60%)' }} />}
-                        <div>
-                          <div style={{ fontSize: 13, fontWeight: 600 }}>{m.title}</div>
-                          {m.release_date && <div style={{ fontSize: 11, color: 'var(--text2)' }}>{m.release_date.slice(0, 4)}</div>}
+                    {missing.map(m => {
+                      const borderColor = m.finished ? '#27ae60' : m.in_library ? '#3498db' : 'var(--border)'
+                      const badge = m.finished
+                        ? { label: '✓ Finished', color: '#27ae60' }
+                        : m.in_library
+                          ? { label: '📚 In library', color: '#3498db' }
+                          : { label: '○ Not watched', color: 'var(--text2)' }
+                      return (
+                        <div key={m.tmdb_id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg)', border: `1px ${m.in_library ? 'solid' : 'dashed'} ${borderColor}`, borderRadius: 6, padding: '6px 10px', opacity: m.in_library ? 1 : 0.55 }}>
+                          {m.poster_url && <img src={m.poster_url} alt={m.title} style={{ width: 24, height: 34, objectFit: 'cover', borderRadius: 2, filter: m.in_library ? 'none' : 'grayscale(60%)' }} />}
+                          <div>
+                            <div style={{ fontSize: 13, fontWeight: 600 }}>{m.title}</div>
+                            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 2 }}>
+                              {m.release_date && <span style={{ fontSize: 11, color: 'var(--text2)' }}>{m.release_date.slice(0, 4)}</span>}
+                              <span style={{ fontSize: 11, color: badge.color, fontWeight: 600 }}>{badge.label}</span>
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      )
+                    })}
                   </div>
                 )}
               </div>

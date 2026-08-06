@@ -201,6 +201,7 @@ async function init() {
   try { await db.run('ALTER TABLE completion_stats ADD COLUMN games_with_hltb INTEGER DEFAULT 0') } catch {}
   try { await db.run('ALTER TABLE library_items ADD COLUMN country_code TEXT') } catch {}
   try { await db.run('ALTER TABLE users ADD COLUMN jellyfin_token TEXT') } catch {}
+  try { await db.run('ALTER TABLE collection_items ADD COLUMN tmdb_id INTEGER') } catch {}
 
   await db.exec(`
     CREATE TABLE IF NOT EXISTS tmdb_country_cache (
