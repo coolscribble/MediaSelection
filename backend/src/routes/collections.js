@@ -337,4 +337,164 @@ router.post('/auto-detect-anime', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Sync collection item completion from Simkl + AniList via Server-Sent Events
+router.get('/sync-watched', async (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+  const send = (data) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+    if (typeof res.flush === 'function') res.flush();
+  };
+
+  try {
+    // Fetch all non-completed collection items for this user with their library link
+    const colItems = await db.all(`
+      SELECT ci.id, ci.tmdb_id, ci.library_item_id,
+             li.external_id AS lib_ext_id, li.category AS lib_cat
+      FROM collection_items ci
+      JOIN collections c ON c.id = ci.collection_id
+      LEFT JOIN library_items li ON li.id = ci.library_item_id
+      WHERE c.user_id = ? AND ci.completed_at IS NULL
+    `, [req.userId]);
+
+    // Build lookup maps
+    //   byTmdb:   Number(tmdb_id) → [ci_id, ...]
+    //   byLibKey: `${category}:${external_id}` → [ci_id, ...]
+    const byTmdb   = new Map();
+    const byLibKey = new Map();
+
+    for (const ci of colItems) {
+      if (ci.tmdb_id) {
+        if (!byTmdb.has(ci.tmdb_id)) byTmdb.set(ci.tmdb_id, []);
+        byTmdb.get(ci.tmdb_id).push(ci.id);
+      }
+      if (ci.lib_ext_id && ci.lib_cat) {
+        const k = `${ci.lib_cat}:${ci.lib_ext_id}`;
+        if (!byLibKey.has(k)) byLibKey.set(k, []);
+        byLibKey.get(k).push(ci.id);
+      }
+    }
+
+    const toUpdate = new Set(); // ci_id values to mark completed
+
+    // ── Simkl ───────────────────────────────────────────────────────────────
+    const [cidRow, tokenRow] = await Promise.all([
+      db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [req.userId, 'simkl_client_id']),
+      db.get('SELECT value FROM settings WHERE user_id = ? AND key = ?', [req.userId, 'simkl_access_token']),
+    ]);
+
+    if (!cidRow?.value || !tokenRow?.value) {
+      send({ step: 'Simkl not configured — skipping', pct: 10 });
+    } else {
+      const cid = cidRow.value;
+      const simklHdrs = {
+        Authorization: `Bearer ${tokenRow.value}`,
+        'simkl-api-key': cid,
+        'Content-Type': 'application/json',
+      };
+      const simklTypes = [
+        { type: 'movies', key: 'movie', cat: 'movies', label: 'movies'   },
+        { type: 'shows',  key: 'show',  cat: 'series', label: 'TV shows' },
+        { type: 'anime',  key: 'anime', cat: 'anime',  label: 'anime'    },
+      ];
+      for (let i = 0; i < simklTypes.length; i++) {
+        const { type, key, cat, label } = simklTypes[i];
+        send({ step: `Fetching completed ${label} from Simkl…`, pct: 5 + i * 13 });
+        try {
+          const r = await fetch(
+            `https://api.simkl.com/sync/all-items/completed/${type}?client_id=${encodeURIComponent(cid)}&extended=full`,
+            { headers: simklHdrs }
+          );
+          if (!r.ok) continue;
+          const data = await r.json();
+          for (const entry of (data[type] || [])) {
+            const item = entry[key];
+            if (!item) continue;
+            const tmdbId  = item.ids?.tmdb  ? Number(item.ids.tmdb)  : null;
+            const simklId = item.ids?.simkl ? String(item.ids.simkl) : null;
+            if (tmdbId)  for (const id of (byTmdb.get(tmdbId)              || [])) toUpdate.add(id);
+            if (simklId) for (const id of (byLibKey.get(`${cat}:${simklId}`) || [])) toUpdate.add(id);
+          }
+        } catch { /* skip type on error */ }
+      }
+      send({ step: 'Simkl done', pct: 50 });
+    }
+
+    // ── AniList ──────────────────────────────────────────────────────────────
+    const alUserRow = await db.get(
+      'SELECT value FROM settings WHERE user_id = ? AND key = ?',
+      [req.userId, 'anilist_username']
+    );
+    if (!alUserRow?.value) {
+      send({ step: 'AniList not configured — skipping', pct: 60 });
+    } else {
+      send({ step: 'Fetching completed anime from AniList…', pct: 60 });
+      try {
+        const query = `query($u:String){MediaListCollection(userName:$u,type:ANIME,status:COMPLETED){lists{entries{media{id}}}}}`;
+        const r = await fetch('https://graphql.anilist.co', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ query, variables: { u: alUserRow.value } }),
+        });
+        if (r.ok) {
+          const json = await r.json();
+          for (const list of (json.data?.MediaListCollection?.lists || [])) {
+            for (const entry of (list.entries || [])) {
+              const alId = String(entry.media?.id || '');
+              if (alId) for (const id of (byLibKey.get(`anime:${alId}`) || [])) toUpdate.add(id);
+            }
+          }
+        }
+      } catch { /* skip */ }
+      send({ step: 'AniList done', pct: 80 });
+    }
+
+    // Also fetch completed manga from AniList if configured above
+    if (alUserRow?.value) {
+      send({ step: 'Fetching completed manga from AniList…', pct: 83 });
+      try {
+        const q2 = `query($u:String){MediaListCollection(userName:$u,type:MANGA,status:COMPLETED){lists{entries{media{id}}}}}`;
+        const r2 = await fetch('https://graphql.anilist.co', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+          body: JSON.stringify({ query: q2, variables: { u: alUserRow.value } }),
+        });
+        if (r2.ok) {
+          const j2 = await r2.json();
+          for (const list of (j2.data?.MediaListCollection?.lists || [])) {
+            for (const entry of (list.entries || [])) {
+              const alId = String(entry.media?.id || '');
+              if (alId) for (const id of (byLibKey.get(`manga:${alId}`) || [])) toUpdate.add(id);
+            }
+          }
+        }
+      } catch { /* skip */ }
+    }
+
+    // ── Apply ────────────────────────────────────────────────────────────────
+    const count = toUpdate.size;
+    send({ step: count === 0 ? 'Nothing new to mark' : `Marking ${count} entr${count === 1 ? 'y' : 'ies'} as watched…`, pct: 90 });
+
+    let updated = 0;
+    for (const id of toUpdate) {
+      await db.run('UPDATE collection_items SET completed_at = CURRENT_TIMESTAMP WHERE id = ?', [id]);
+      updated++;
+    }
+
+    send({
+      step: updated === 0
+        ? 'Already up to date — nothing changed.'
+        : `Done! ${updated} collection entr${updated === 1 ? 'y' : 'ies'} marked as watched.`,
+      pct: 100, done: true, result: { updated },
+    });
+    res.end();
+  } catch (e) {
+    res.write(`data: ${JSON.stringify({ error: e.message, done: true })}\n\n`);
+    res.end();
+  }
+});
+
 module.exports = router;
