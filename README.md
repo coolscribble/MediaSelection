@@ -49,7 +49,7 @@ Seven categories, each fully independent with its own library, slots, queue, and
 
 | Icon | Category | Notes |
 |---|---|---|
-| 🎬 | **Movies** | TMDB integration, Simkl sync, collection auto-detect |
+| 🎬 | **Movies** | TMDB integration, Simkl sync, collection franchise auto-detect |
 | 📺 | **Series** | Simkl sync, episode tracking, airing status |
 | ⛩️ | **Anime** | AniList + MAL sync, episode tracking, collection auto-detect |
 | 📚 | **Manga** | AniList + MAL sync, chapter tracking |
@@ -108,13 +108,42 @@ A separate section below the main grid shows currently airing series, anime, and
 
 ### 🗂 Collections
 
-Group related items into franchises or series. Collections appear on the Collections page with a completion progress bar.
+Group related items into franchises or series. Each collection shows a **progress bar** and a **watched/total count** (e.g. `2/8 done`) based on the full franchise size, not just the items you've already added.
 
 | Feature | Description |
 |---|---|
 | **Manual** | Create a collection, add items from your library |
-| **Auto-detect Movies** | Finds TMDB movie collections across your movie library |
+| **Auto-detect Movies** | Finds TMDB movie collections across your movie library; fetches the full franchise part count automatically |
 | **Auto-detect Anime** | Uses the AniList relations graph (BFS over SEQUEL/PREQUEL/PARENT/SIDE_STORY links) to find franchise groups |
+| **Missing franchise movies** | Open any TMDB-linked movie collection to see all franchise entries not yet in the collection. Each missing entry shows whether it's already in your library (📚) or fully watched (✓), with color-coded badges |
+| **Franchise denominator** | Progress is shown against the total TMDB franchise size — if a franchise has 8 films and you've watched 2, it shows `2/8` even if only 3 are in your collection |
+| **Filter tabs** | Filter collections by: **All · ✓ Finished · … In Progress · [category]** |
+| **🔄 Sync Watched** | Fetches your completed history from Simkl (movies, TV shows, anime) and AniList (anime, manga) and marks matching collection entries as watched — with a live **progress bar** streaming each step in real time |
+
+---
+
+### 🌍 World Map
+
+The World Map page plots every country where your watched/read/played content was produced. Each country that appears in your library lights up on an interactive SVG map.
+
+| Feature | Description |
+|---|---|
+| **Simkl sync** | Refresh the map from your full Simkl history (TMDB production country lookup) |
+| **Jellyfin sync** | Pull watched items from a connected Jellyfin server and add their production countries |
+| **Country caching** | TMDB country lookups are cached in the database so subsequent syncs are near-instant |
+| **Interactive** | Zoom in/out, drag to pan, click a country for details |
+
+---
+
+### 🎬 Jellyfin Integration
+
+If you log in via Jellyfin or connect a Jellyfin server in Settings, extra features unlock:
+
+| Feature | Description |
+|---|---|
+| **Library import** | **Sync → Import from Jellyfin** — imports your full Jellyfin library (movies, series, anime) into MediaPicker. Deduplicates against existing Simkl-imported items by TMDB ID. Anime is auto-detected from the Genres field. |
+| **World Map sync** | **World Map → Sync from Jellyfin** — adds production countries for everything you've watched on Jellyfin |
+| **Settings status** | Settings → Connections shows the connected Jellyfin server URL with a ✓ Connected badge |
 
 ---
 
@@ -130,8 +159,9 @@ Open **⟳ Sync** from the header to pull your lists from:
 | **MyAnimeList** | Anime, Manga | Via Jikan public API — no API key needed |
 | **Simkl** | Movies, TV Shows, Anime | OAuth login required; choose which statuses to import |
 | **TMDB** | Movies | Imports your TMDB watchlist; OAuth session required |
-| **Steam** | Games | Steam ID + session cookie; fetches full library |
-| **PlayStation (PSN)** | Games | PSN ID sync |
+| **Jellyfin** | Movies, Series, Anime | Imports your full Jellyfin media library |
+| **Steam** | Games | Steam ID; fetches full library via Steam Web API |
+| **PlayStation (PSN)** | Games | NPSSO token sync |
 | **Xbox** | Games | Gamertag lookup via xbl.io API key |
 | **RetroAchievements** | Games | Imports your RA game library with achievement progress |
 
@@ -186,7 +216,7 @@ Configure in **Settings → Connections → RetroAchievements**.
 | **Profile** | Username display, public profile toggle |
 | **Display** | Show/hide individual categories across the whole app |
 | **Queue** | Enable queue mode per category |
-| **Connections** | API keys: IGDB, ComicVine, TMDB, Xbox, RetroAchievements; sync credentials: Simkl, AniList username, MAL username, Steam ID, RA username |
+| **Connections** | API keys: IGDB, ComicVine, TMDB, Xbox, RetroAchievements, Jellyfin status; sync credentials: Simkl, AniList username, MAL username, Steam ID, RA username |
 | **Import/Sync** | Configure which statuses to import from AniList, Simkl, and MAL |
 
 ---
@@ -194,3 +224,23 @@ Configure in **Settings → Connections → RetroAchievements**.
 ### 📊 Stats
 
 The stats bar below the header shows total completions per visible category with episode/chapter counts. The XP bar at the very top tracks your level progress. The full stats screen (accessible via the XP bar) shows per-category breakdowns and total game hours tracked via HLTB.
+
+---
+
+## Changelog highlights
+
+| Version | Change |
+|---|---|
+| v1.0.19 | Collections: **Sync Watched** button with live SSE progress bar — marks entries as watched from Simkl & AniList |
+| v1.0.18 | Collections: progress bar and `done/total` count use the **full franchise size** as denominator |
+| v1.0.17 | Collections: progress bars on cards, status badges (Finished / In Library / Not Watched) on missing franchise movies |
+| v1.0.16 | Collections: **In Progress** filter tab |
+| v1.0.15 | Collections: show all franchise movies not yet in the collection with library/watched status |
+| v1.0.14 | Collections: Simkl completion sync marks matching entries watched; **Finished** filter tab |
+| v1.0.13 | Fix Jellyfin settings not appearing (camelCase/snake_case normalization) |
+| v1.0.12 | **Jellyfin library import** — import full Jellyfin library into MediaPicker |
+| v1.0.11 | **Jellyfin World Map sync** — production countries from your Jellyfin watched history |
+| v1.0.10 | World Map: drag-to-pan, persistent TMDB country cache, improved country lookup |
+| v1.0.4 | Mobile-responsive layout |
+| v1.0.3 | Steam import via Steam Web API (no DevTools required) |
+| v1.0.0 | First stable release |
