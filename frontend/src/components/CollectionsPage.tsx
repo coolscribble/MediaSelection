@@ -156,7 +156,10 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
     } finally { setDetectingAnime(false) }
   }
 
-  const displayed = catFilter === 'all' ? collections : collections.filter(c => c.category === catFilter)
+  const displayed =
+    catFilter === 'finished' ? collections.filter(c => completionOf(c).complete)
+    : catFilter === 'all'    ? collections
+    :                          collections.filter(c => c.category === catFilter)
 
   function completionOf(col: Collection) {
     const total = col.items.length
@@ -188,11 +191,12 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
 
       {/* Category tabs */}
       <div style={{ display: 'flex', gap: 4, padding: '12px 20px 0', overflowX: 'auto', background: 'var(--surface)', borderBottom: '1px solid var(--border)' }}>
-        {['all', ...CATEGORIES.filter(c => !hiddenCategories.includes(c))].map(cat => (
+        {['all', 'finished', ...CATEGORIES.filter(c => !hiddenCategories.includes(c))].map(cat => (
           <button key={cat} onClick={() => setCatFilter(cat)}
             style={{ padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer', fontWeight: catFilter === cat ? 700 : 400, fontSize: 13, whiteSpace: 'nowrap',
-              background: catFilter === cat ? 'var(--accent)' : 'var(--bg)', color: catFilter === cat ? '#fff' : 'var(--text)' }}>
-            {cat === 'all' ? 'All' : `${CATEGORY_ICONS[cat]} ${CATEGORY_LABELS[cat]}`}
+              background: catFilter === cat ? (cat === 'finished' ? '#27ae60' : 'var(--accent)') : 'var(--bg)',
+              color: catFilter === cat ? '#fff' : cat === 'finished' ? '#27ae60' : 'var(--text)' }}>
+            {cat === 'all' ? 'All' : cat === 'finished' ? '✓ Finished' : `${CATEGORY_ICONS[cat]} ${CATEGORY_LABELS[cat]}`}
           </button>
         ))}
       </div>
@@ -219,7 +223,10 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
           <div style={{ textAlign: 'center', padding: 40, color: 'var(--text2)' }}>Loading…</div>
         ) : displayed.length === 0 ? (
           <div style={{ textAlign: 'center', padding: 40, color: 'var(--text2)' }}>
-            No collections yet.{catFilter === 'movies' ? ' Try "Auto-detect Movies" to find franchises.' : ' Click "+ New Collection" to create one.'}
+            {catFilter === 'finished'
+              ? 'No finished collections yet. Complete all entries in a collection to see it here.'
+              : `No collections yet.${catFilter === 'movies' ? ' Try "Auto-detect Movies" to find franchises.' : ' Click "+ New Collection" to create one.'}`
+            }
           </div>
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>

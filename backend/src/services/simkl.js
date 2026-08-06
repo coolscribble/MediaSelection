@@ -80,6 +80,7 @@ async function syncSimkl(userId) {
         const tmdbId = item.ids?.tmdb ? Number(item.ids.tmdb) : null;
         const metadata = JSON.stringify({ year: item.year, status, total, ...(tmdbId ? { tmdb_id: tmdbId } : {}) });
 
+        let libItemId = null;
         if (extId) {
           const existing = await db.get(
             'SELECT id FROM library_items WHERE user_id = ? AND category = ? AND external_id = ?',
@@ -90,14 +91,24 @@ async function syncSimkl(userId) {
               'UPDATE library_items SET thumbnail_url = ?, metadata = ? WHERE id = ?',
               [thumb, metadata, existing.id]
             );
-            continue;
+            libItemId = existing.id;
           }
         }
-        await db.run(
-          'INSERT INTO library_items (user_id, category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [userId, category, item.title, extId, thumb, metadata, 'simkl']
-        );
-        counts[category]++;
+        if (!libItemId) {
+          const r = await db.run(
+            'INSERT INTO library_items (user_id, category, title, external_id, thumbnail_url, metadata, source) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            [userId, category, item.title, extId, thumb, metadata, 'simkl']
+          );
+          libItemId = r.lastInsertRowid;
+          counts[category]++;
+        }
+        // Mark matching collection entries as completed when Simkl status = completed
+        if (status === 'completed' && libItemId) {
+          await db.run(
+            'UPDATE collection_items SET completed_at = CURRENT_TIMESTAMP WHERE library_item_id = ? AND completed_at IS NULL',
+            [libItemId]
+          );
+        }
       }
     }
   }
