@@ -30,6 +30,7 @@ interface Collection {
   category: string
   cover_url: string | null
   external_id: string | null
+  franchise_total: number | null
   items: CollectionItem[]
 }
 
@@ -174,9 +175,10 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
     :                                collections.filter(c => c.category === catFilter)
 
   function completionOf(col: Collection) {
-    const total = col.items.length
-    const done = col.items.filter(i => i.completed_at).length
-    return { total, done, complete: total >= 2 && done >= total }
+    const inCol   = col.items.length
+    const done    = col.items.filter(i => i.completed_at).length
+    const denom   = col.franchise_total ?? inCol   // use full franchise count when known
+    return { inCol, done, denom, complete: denom >= 2 && done >= denom, pct: denom > 0 ? done / denom : 0 }
   }
 
   function bonusXp(col: Collection) {
@@ -190,7 +192,17 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
     if (col.category === 'movies' && col.external_id) {
       setMissingLoading(true)
       getCollectionMissing(col.id)
-        .then((d: unknown) => setMissing((d as { missing: MissingMovie[] }).missing || []))
+        .then((d: unknown) => {
+          const resp = d as { missing: MissingMovie[]; franchise_total?: number }
+          setMissing(resp.missing || [])
+          // Patch franchise_total onto both selected and collection list
+          if (resp.franchise_total != null) {
+            const patch = (c: Collection) =>
+              c.id === col.id ? { ...c, franchise_total: resp.franchise_total! } : c
+            setCollections(prev => prev.map(patch))
+            setSelected(prev => prev ? patch(prev) : prev)
+          }
+        })
         .catch(() => setMissing([]))
         .finally(() => setMissingLoading(false))
     }
@@ -266,7 +278,7 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
         ) : (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
             {displayed.map(col => {
-              const { total, done, complete } = completionOf(col)
+              const { inCol, done, denom, complete } = completionOf(col)
               const xp = bonusXp(col)
               const cover = col.cover_url || col.items.find(i => i.thumbnail_url)?.thumbnail_url
               return (
@@ -277,20 +289,20 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
                   }
                   <div className="collection-card-body">
                     <div className="collection-card-title" title={col.name}>{col.name}</div>
-                    <div className="collection-card-meta">{CATEGORY_ICONS[col.category]} {CATEGORY_LABELS[col.category]} · {total} {total === 1 ? 'entry' : 'entries'}</div>
-                    {total > 0 && (
+                    <div className="collection-card-meta">{CATEGORY_ICONS[col.category]} {CATEGORY_LABELS[col.category]} · {inCol} {inCol === 1 ? 'entry' : 'entries'}</div>
+                    {denom > 0 && (
                       <>
                         <div style={{ margin: '5px 0 3px', height: 5, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
                           <div style={{
                             height: '100%',
-                            width: `${Math.round((done / total) * 100)}%`,
+                            width: `${Math.round((done / denom) * 100)}%`,
                             borderRadius: 3,
                             background: complete ? '#27ae60' : done > 0 ? '#e67e22' : '#555',
                             transition: 'width 0.4s',
                           }} />
                         </div>
                         <div className={`collection-card-progress ${complete ? 'complete' : done > 0 ? 'partial' : ''}`}>
-                          {complete ? '✓ Complete' : `${done}/${total} done`}
+                          {complete ? '✓ Complete' : `${done}/${denom} done`}
                           {complete ? ` · +${xp} XP` : ` · +${xp} XP on finish`}
                         </div>
                       </>
@@ -318,17 +330,17 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
               <span style={{ fontSize: 20 }}>{CATEGORY_ICONS[selected.category]}</span>
               <h3 style={{ margin: 0, flex: 1, fontSize: 16 }}>{selected.name}</h3>
               <span style={{ fontSize: 12, color: 'var(--text2)' }}>
-                {completionOf(selected).done}/{completionOf(selected).total} done · +{bonusXp(selected)} XP bonus
+                {completionOf(selected).done}/{completionOf(selected).denom} done · +{bonusXp(selected)} XP bonus
               </span>
               <button className="btn-ghost" style={{ fontSize: 18, padding: '0 6px' }} onClick={() => { setSelected(null); setAddingItem(false); setMissing([]) }}>×</button>
             </div>
-            {completionOf(selected).total > 0 && (() => {
-              const { done, total, complete } = completionOf(selected)
+            {completionOf(selected).denom > 0 && (() => {
+              const { done, denom, complete } = completionOf(selected)
               return (
                 <div style={{ marginBottom: 16, height: 6, borderRadius: 3, background: 'var(--border)', overflow: 'hidden' }}>
                   <div style={{
                     height: '100%',
-                    width: `${Math.round((done / total) * 100)}%`,
+                    width: `${Math.round((done / denom) * 100)}%`,
                     borderRadius: 3,
                     background: complete ? '#27ae60' : done > 0 ? '#e67e22' : '#555',
                     transition: 'width 0.4s',

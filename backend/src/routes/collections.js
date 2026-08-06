@@ -8,7 +8,7 @@ const { db } = require('../database');
 router.get('/', async (req, res) => {
   try {
     const cols = await db.all(
-      'SELECT id, name, category, cover_url, external_id, created_at FROM collections WHERE user_id = ? ORDER BY created_at DESC',
+      'SELECT id, name, category, cover_url, external_id, franchise_total, created_at FROM collections WHERE user_id = ? ORDER BY created_at DESC',
       [req.userId]
     );
     const result = await Promise.all(cols.map(async col => {
@@ -141,8 +141,14 @@ router.get('/:id/missing', async (req, res) => {
       } catch { /* skip */ }
     }
 
-    const missing = (data.parts || [])
-      .filter(p => p.id && !colTmdbIds.has(p.id))   // not already in this collection
+    const parts = data.parts || [];
+    const franchiseTotal = parts.length;
+
+    // Cache the franchise total so cards can show correct denominator without extra calls
+    await db.run('UPDATE collections SET franchise_total = ? WHERE id = ?', [franchiseTotal, col.id]);
+
+    const missing = parts
+      .filter(p => p.id && !colTmdbIds.has(p.id))
       .map(p => {
         const lib = userByTmdb.get(p.id);
         return {
@@ -156,7 +162,7 @@ router.get('/:id/missing', async (req, res) => {
       })
       .sort((a, b) => (a.release_date || '').localeCompare(b.release_date || ''));
 
-    res.json({ missing });
+    res.json({ missing, franchise_total: franchiseTotal });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -206,14 +212,22 @@ router.post('/auto-detect', async (req, res) => {
         [req.userId, String(colId)]
       );
       if (existing) continue;
+      // Fetch franchise details to get total parts count
+      let franchiseTotal = null;
+      try {
+        const fr = await fetch(`https://api.themoviedb.org/3/collection/${colId}?api_key=${encodeURIComponent(apiKey)}`);
+        if (fr.ok) franchiseTotal = ((await fr.json()).parts || []).length;
+      } catch { /* non-fatal */ }
+
       const col = await db.run(
-        'INSERT INTO collections (user_id, name, category, cover_url, external_id) VALUES (?, ?, ?, ?, ?)',
-        [req.userId, group.name, 'movies', group.poster, String(colId)]
+        'INSERT INTO collections (user_id, name, category, cover_url, external_id, franchise_total) VALUES (?, ?, ?, ?, ?, ?)',
+        [req.userId, group.name, 'movies', group.poster, String(colId), franchiseTotal]
       );
       for (const movie of group.movies) {
+        const tmdbId = (() => { try { return JSON.parse(movie.metadata || '{}').tmdb_id || null; } catch { return null; } })();
         await db.run(
-          'INSERT INTO collection_items (collection_id, library_item_id, title, thumbnail_url) VALUES (?, ?, ?, ?)',
-          [col.lastInsertRowid, movie.id, movie.title, movie.thumbnail_url]
+          'INSERT INTO collection_items (collection_id, library_item_id, title, thumbnail_url, tmdb_id) VALUES (?, ?, ?, ?, ?)',
+          [col.lastInsertRowid, movie.id, movie.title, movie.thumbnail_url, tmdbId]
         );
       }
       created++;
