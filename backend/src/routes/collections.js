@@ -140,9 +140,17 @@ router.get('/:id/missing', async (req, res) => {
     for (const m of userMovies) {
       try {
         const meta = JSON.parse(m.metadata || '{}');
-        if (meta.tmdb_id) userByTmdb.set(meta.tmdb_id, { finished: meta.status === 'completed' });
+        if (meta.tmdb_id) userByTmdb.set(meta.tmdb_id, { finished: (meta.status || '').toLowerCase() === 'completed' });
       } catch { /* skip */ }
     }
+
+    // Also check watched_items — covers movies watched via Simkl/AniList/Jellyfin
+    // but not imported into the library (e.g. watched long ago, never added as plan-to-watch)
+    const watchedRows = await db.all(
+      "SELECT DISTINCT tmdb_id FROM watched_items WHERE user_id = ? AND tmdb_id IS NOT NULL AND category = 'movies'",
+      [req.userId]
+    );
+    const watchedTmdbIds = new Set(watchedRows.map(r => r.tmdb_id));
 
     const parts = data.parts || [];
     const franchiseTotal = parts.length;
@@ -153,14 +161,15 @@ router.get('/:id/missing', async (req, res) => {
     const missing = parts
       .filter(p => p.id && !colTmdbIds.has(p.id))
       .map(p => {
-        const lib = userByTmdb.get(p.id);
+        const lib     = userByTmdb.get(p.id);
+        const watched = watchedTmdbIds.has(p.id);
         return {
           tmdb_id:      p.id,
           title:        p.title,
           release_date: p.release_date || null,
           poster_url:   p.poster_path ? `https://image.tmdb.org/t/p/w200${p.poster_path}` : null,
           in_library:   !!lib,
-          finished:     lib?.finished ?? false,
+          finished:     !!(lib?.finished) || watched,
         };
       })
       .sort((a, b) => (a.release_date || '').localeCompare(b.release_date || ''));
