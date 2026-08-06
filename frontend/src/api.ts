@@ -203,6 +203,7 @@ export const addCollectionItem = (collectionId: number, library_item_id: number)
   call(`/api/collections/${collectionId}/items`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ library_item_id }) })
 export const removeCollectionItem = (collectionId: number, itemId: number) =>
   call(`/api/collections/${collectionId}/items/${itemId}`, { method: 'DELETE' })
+export const getCollectionMissing = (id: number) => call(`/api/collections/${id}/missing`)
 export const autoDetectCollections = () =>
   call('/api/collections/auto-detect', { method: 'POST' })
 export const autoDetectAnimeCollections = () =>

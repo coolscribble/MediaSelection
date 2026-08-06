@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { getCollections, createCollection, deleteCollection, addCollectionItem, removeCollectionItem, autoDetectCollections, autoDetectAnimeCollections, getLibrary } from '../api'
+import { getCollections, createCollection, deleteCollection, addCollectionItem, removeCollectionItem, autoDetectCollections, autoDetectAnimeCollections, getLibrary, getCollectionMissing } from '../api'
 import { toast } from '../notifications'
 
 const CATEGORIES = ['movies', 'series', 'anime', 'manga', 'games', 'comics', 'albums']
@@ -33,6 +33,13 @@ interface Collection {
   items: CollectionItem[]
 }
 
+interface MissingMovie {
+  tmdb_id: number
+  title: string
+  release_date: string | null
+  poster_url: string | null
+}
+
 interface Props {
   onBack: () => void
   onRefresh: () => void
@@ -53,6 +60,8 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
   const [itemSearch, setItemSearch] = useState('')
   const [detecting, setDetecting] = useState(false)
   const [detectingAnime, setDetectingAnime] = useState(false)
+  const [missing, setMissing] = useState<MissingMovie[]>([])
+  const [missingLoading, setMissingLoading] = useState(false)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -171,6 +180,19 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
     return col.items.length * (COLLECTION_BONUS_PER_ENTRY[col.category] || 10)
   }
 
+  const openCollection = (col: Collection) => {
+    setSelected(col)
+    setMissing([])
+    setAddingItem(false)
+    if (col.category === 'movies' && col.external_id) {
+      setMissingLoading(true)
+      getCollectionMissing(col.id)
+        .then((d: unknown) => setMissing((d as { missing: MissingMovie[] }).missing || []))
+        .catch(() => setMissing([]))
+        .finally(() => setMissingLoading(false))
+    }
+  }
+
   const filteredLibrary = libraryItems.filter(i => i.title.toLowerCase().includes(itemSearch.toLowerCase()))
 
   return (
@@ -235,7 +257,7 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
               const xp = bonusXp(col)
               const cover = col.cover_url || col.items.find(i => i.thumbnail_url)?.thumbnail_url
               return (
-                <div key={col.id} className="collection-card" onClick={() => setSelected(col)}>
+                <div key={col.id} className="collection-card" onClick={() => openCollection(col)}>
                   {cover
                     ? <img src={cover} alt={col.name} className="collection-card-cover" />
                     : <div className="collection-card-cover collection-card-icon">{CATEGORY_ICONS[col.category]}</div>
@@ -252,7 +274,7 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
                   </div>
                   <div className="collection-card-overlay">
                     <button className="btn-ghost" style={{ fontSize: 12, padding: '3px 8px' }}
-                      onClick={e => { e.stopPropagation(); setSelected(col) }}>✏ Edit</button>
+                      onClick={e => { e.stopPropagation(); openCollection(col) }}>✏ Edit</button>
                     <button className="btn-ghost" style={{ fontSize: 12, padding: '3px 8px', color: '#e55' }}
                       onClick={e => { e.stopPropagation(); handleDelete(col) }}>✕</button>
                   </div>
@@ -266,7 +288,7 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
       {/* Collection detail panel */}
       {selected && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 100, display: 'flex', alignItems: 'flex-end', justifyContent: 'center' }}
-          onClick={e => { if (e.target === e.currentTarget) { setSelected(null); setAddingItem(false) } }}>
+          onClick={e => { if (e.target === e.currentTarget) { setSelected(null); setAddingItem(false); setMissing([]) } }}>
           <div style={{ width: '100%', maxWidth: 700, background: 'var(--surface)', borderRadius: '12px 12px 0 0', padding: 20, maxHeight: '80vh', overflowY: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
               <span style={{ fontSize: 20 }}>{CATEGORY_ICONS[selected.category]}</span>
@@ -274,7 +296,7 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
               <span style={{ fontSize: 12, color: 'var(--text2)' }}>
                 {completionOf(selected).done}/{completionOf(selected).total} complete · +{bonusXp(selected)} XP bonus
               </span>
-              <button className="btn-ghost" style={{ fontSize: 18, padding: '0 6px' }} onClick={() => { setSelected(null); setAddingItem(false) }}>×</button>
+              <button className="btn-ghost" style={{ fontSize: 18, padding: '0 6px' }} onClick={() => { setSelected(null); setAddingItem(false); setMissing([]) }}>×</button>
             </div>
 
             {/* Items list */}
@@ -296,6 +318,28 @@ export default function CollectionsPage({ onBack, onRefresh, hiddenCategories = 
                 <div style={{ color: 'var(--text2)', fontSize: 13 }}>No entries yet.</div>
               )}
             </div>
+
+            {/* Missing movies from TMDB franchise */}
+            {selected.category === 'movies' && selected.external_id && (missingLoading || missing.length > 0) && (
+              <div style={{ marginTop: 16, marginBottom: 4 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text2)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                  {missingLoading ? '⏳ Checking franchise…' : `🔍 ${missing.length} not in your library`}
+                </div>
+                {!missingLoading && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {missing.map(m => (
+                      <div key={m.tmdb_id} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--bg)', border: '1px dashed var(--border)', borderRadius: 6, padding: '6px 10px', opacity: 0.6 }}>
+                        {m.poster_url && <img src={m.poster_url} alt={m.title} style={{ width: 24, height: 34, objectFit: 'cover', borderRadius: 2, filter: 'grayscale(60%)' }} />}
+                        <div>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{m.title}</div>
+                          {m.release_date && <div style={{ fontSize: 11, color: 'var(--text2)' }}>{m.release_date.slice(0, 4)}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Add item picker */}
             {addingItem ? (

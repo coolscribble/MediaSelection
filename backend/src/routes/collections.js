@@ -98,6 +98,54 @@ router.delete('/:id/items/:itemId', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Movies in the TMDB franchise that are NOT yet in the user's library
+router.get('/:id/missing', async (req, res) => {
+  try {
+    const col = await db.get(
+      'SELECT id, category, external_id FROM collections WHERE id = ? AND user_id = ?',
+      [req.params.id, req.userId]
+    );
+    if (!col) return res.status(404).json({ error: 'Not found' });
+    // Only TMDB-linked movie collections have an external_id
+    if (col.category !== 'movies' || !col.external_id) return res.json({ missing: [] });
+
+    const keyRow = await db.get(
+      'SELECT value FROM settings WHERE user_id = ? AND key = ?',
+      [req.userId, 'tmdb_api_key']
+    );
+    if (!keyRow?.value) return res.status(400).json({ error: 'TMDB API key not configured in Settings' });
+
+    const r = await fetch(
+      `https://api.themoviedb.org/3/collection/${encodeURIComponent(col.external_id)}?api_key=${encodeURIComponent(keyRow.value)}`
+    );
+    if (!r.ok) return res.status(502).json({ error: `TMDB error: ${r.status}` });
+    const data = await r.json();
+
+    // Collect all TMDB IDs the user already has in their movies library
+    const userMovies = await db.all(
+      "SELECT metadata FROM library_items WHERE user_id = ? AND category = 'movies'",
+      [req.userId]
+    );
+    const userTmdbIds = new Set(
+      userMovies.map(m => {
+        try { return JSON.parse(m.metadata || '{}').tmdb_id; } catch { return null; }
+      }).filter(Boolean)
+    );
+
+    const missing = (data.parts || [])
+      .filter(p => p.id && !userTmdbIds.has(p.id))
+      .map(p => ({
+        tmdb_id:      p.id,
+        title:        p.title,
+        release_date: p.release_date || null,
+        poster_url:   p.poster_path ? `https://image.tmdb.org/t/p/w200${p.poster_path}` : null,
+      }))
+      .sort((a, b) => (a.release_date || '').localeCompare(b.release_date || ''));
+
+    res.json({ missing });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Auto-detect movie collections from TMDB
 router.post('/auto-detect', async (req, res) => {
   try {
